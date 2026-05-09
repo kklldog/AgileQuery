@@ -1,0 +1,96 @@
+[
+  {
+    "id": "demo",
+    "name": "Demo Database",
+    "dialect": "sqlite",
+    "description": "内置演示数据库",
+    "connection_ref": "demo_sqlite",
+    "spaces": [
+      {
+        "id": "sales",
+        "name": "Sales",
+        "description": "销售业务域",
+        "sample_questions": [
+          "华东区销售额是多少？",
+          "客户等级对应的订单金额是多少？"
+        ],
+        "tables": [
+          {
+            "name": "sales_orders",
+            "business_name": "销售订单",
+            "description": "记录订单明细与销售金额。",
+            "alias": "so",
+            "columns": [
+              {
+                "name": "order_id",
+                "data_type": "INTEGER",
+                "description": "订单主键"
+              },
+              {
+                "name": "customer_name",
+                "data_type": "TEXT",
+                "description": "客户名称"
+              },
+              {
+                "name": "region",
+                "data_type": "TEXT",
+                "description": "销售区域"
+              },
+              {
+                "name": "amount",
+                "data_type": "REAL",
+                "description": "订单金额"
+              }
+            ]
+          },
+          {
+            "name": "sales_customers",
+            "business_name": "销售客户",
+            "description": "记录客户名称与客户等级。",
+            "alias": "sc",
+            "columns": [
+              {
+                "name": "customer_name",
+                "data_type": "TEXT",
+                "description": "客户名称"
+              },
+              {
+                "name": "customer_tier",
+                "data_type": "TEXT",
+                "description": "客户等级"
+              }
+            ]
+          }
+        ],
+        "join_rules": [
+          {
+            "id": "orders_to_customers",
+            "description": "订单和客户可通过客户名称关联。也可以参考用户维护的常见 join 示例生成 SQL。",
+            "left_table": "sales_orders",
+            "right_table": "sales_customers",
+            "condition": "so.customer_name = sc.customer_name",
+            "guidance": "优先使用客户名称连接订单和客户维表；若用户描述同名字段可连接，也可以作为 LLM 生成 SQL 的参考。",
+            "examples": [
+              "SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc ON so.customer_name = sc.customer_name"
+            ]
+          }
+        ],
+        "metric_rules": [
+          {
+            "id": "total_sales_amount",
+            "name": "销售额",
+            "description": "销售额口径为订单金额 amount 的求和。",
+            "expression": "SUM(so.amount)",
+            "source_table": "sales_orders",
+            "output_alias": "total_amount",
+            "synonyms": [
+              "营收",
+              "收入",
+              "订单金额"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
