@@ -81,6 +81,8 @@ class SqlGenerationService:
             for table in context.tables
         }
 
+        join_condition_columns = self._join_condition_columns(expression)
+
         for column in expression.find_all(exp.Column):
             column_name = column.name
             qualifier = column.table
@@ -88,6 +90,8 @@ class SqlGenerationService:
             if qualifier:
                 if qualifier not in alias_to_table:
                     raise QueryValidationError(f"Unknown table alias in SQL: {qualifier}")
+                if (qualifier, column_name) in join_condition_columns:
+                    continue
                 table_name = alias_to_table[qualifier]
                 if column_name not in allowed_columns_by_table[table_name]:
                     raise QueryValidationError(f"Unknown column in SQL: {qualifier}.{column_name}")
@@ -114,9 +118,11 @@ class SqlGenerationService:
         table = context.tables[0]
         available_columns = [column.name for column in table.columns]
         lowered = question.lower()
-        if "count" in lowered or "数量" in question or "多少" in question:
+        asks_for_sales_metric = "销售额" in question or "营收" in question or "收入" in question
+        asks_for_amount_detail = "列出" in question and "金额" in question
+        if "count" in lowered or "数量" in question or ("多少" in question and not asks_for_sales_metric):
             return f"SELECT COUNT(1) AS total_count FROM {table.name} AS {table.alias}"
-        if ("sum" in lowered or "销售额" in question or "金额" in question) and "amount" in available_columns:
+        if ("sum" in lowered or asks_for_sales_metric) and not asks_for_amount_detail and "amount" in available_columns:
             return f"SELECT SUM({table.alias}.amount) AS total_amount FROM {table.name} AS {table.alias}"
         projected_columns = available_columns[: min(4, len(available_columns))]
         if not projected_columns:
@@ -201,3 +207,16 @@ class SqlGenerationService:
             if unknown_aliases:
                 unknown_alias = sorted(unknown_aliases)[0]
                 raise QueryValidationError(f"Unknown table alias in JOIN condition: {unknown_alias}")
+
+    def _join_condition_columns(self, expression: exp.Select) -> set[tuple[str, str]]:
+        columns: set[tuple[str, str]] = set()
+        for join in expression.find_all(exp.Join):
+            join_condition = join.args.get("on")
+            if join_condition is None:
+                continue
+            columns.update(
+                (column.table, column.name)
+                for column in join_condition.find_all(exp.Column)
+                if column.table
+            )
+        return columns

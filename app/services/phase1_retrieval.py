@@ -186,9 +186,14 @@ class RetrievalService:
             if doc_type == "metric_rule" and doc_id not in metric_rule_ids:
                 metric_rule_ids.append(doc_id)
 
-        tables = [table_lookup[name] for name in table_names if name in table_lookup]
         metric_rules = [metric_rule_lookup[metric_rule_id] for metric_rule_id in metric_rule_ids if metric_rule_id in metric_rule_lookup]
         metric_rules = self._augment_metric_rules(metric_rule_lookup, metric_rules, table_names, keywords)
+        for metric_rule in metric_rules:
+            if metric_rule.source_table in table_lookup and metric_rule.source_table not in table_names:
+                table_names.insert(0, metric_rule.source_table)
+        source_table_names = [metric_rule.source_table for metric_rule in metric_rules]
+        tables = [table_lookup[name] for name in table_names if name in table_lookup]
+        tables.sort(key=lambda table: source_table_names.index(table.name) if table.name in source_table_names else len(source_table_names))
         return tables, metric_rules
 
     def _augment_metric_rules(
