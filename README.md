@@ -1,42 +1,100 @@
-# AgileQuery MVP
+# AgileQuery
 
-这是基于 `design.md` 搭建的 Python 后端 MVP 骨架（附带 Vue 3 前端），目标是先跑通一个可验证的四阶段链路：
+AgileQuery 是一个基于自然语言的数据查询平台，允许用户通过 AI 对话直接查询数据库，无需编写 SQL。
 
-1. Retrieval：路由 Space 并召回表上下文
-2. Text-to-SQL：生成并校验 SQL
-3. Execution：只读执行与结果保护
-4. Insight：输出摘要和 Markdown 表格
+## 功能截图
+
+### 数据库管理
+
+管理多个数据库连接（SQLite / PostgreSQL / MySQL），支持连接测试与元数据导入。
+
+![数据库管理](docs/screenshots/01_databases.png)
+
+### LLM 配置
+
+在设置面板中配置 OpenAI-compatible LLM Provider，支持自定义 Base URL、API Key、模型名称与超时时间。
+
+![LLM 配置](docs/screenshots/02_llm_config.png)
+
+### 添加数据库
+
+通过表单添加新数据库，支持方言选择（SQLite / PostgreSQL / MySQL / MSSQL）和连接字符串配置。
+
+![添加数据库](docs/screenshots/03_add_database.png)
+
+### 智能对话查询
+
+选择 Space 后即可用自然语言提问，AI 自动生成 SQL 并返回结构化结果与洞察摘要。
+
+![智能对话](docs/screenshots/04_spaces_chat.png)
+
+### Space 基本信息
+
+编辑 Space 的 ID、名称、描述和示例问题，用于辅助 AI 路由。
+
+![Space 信息](docs/screenshots/06_space_edit_info.png)
+
+### Tables 管理
+
+以结构化表格形式管理 Space 内的表，支持字段描述编辑，支持从数据库批量选入表/视图，支持 AI 一键生成表元数据。
+
+![Space Tables](docs/screenshots/07_space_tables.png)
+
+### Joins 配置
+
+以纯文本形式描述表间关联关系，支持 AI 一键辅助生成 JOIN 规则。
+
+![Space Joins](docs/screenshots/08_space_joins.png)
+
+### Metrics 配置
+
+以纯文本形式定义业务指标口径，支持 AI 一键辅助生成 Metric 规则。
+
+![Space Metrics](docs/screenshots/09_space_metrics.png)
+
+---
+
+## 架构
+
+系统基于四阶段 RAG 链路：
+
+1. **Retrieval** — 路由 Space，召回表/指标上下文；支持 LLM 关键词扩展（强 AND → LLM-OR → bigram-OR 三级降级）
+2. **Text-to-SQL** — 基于召回上下文生成 SQL，使用 `sqlglot` AST 校验
+3. **Execution** — 只读执行，支持结果截断保护
+4. **Insight** — LLM 生成摘要与 Markdown 表格
+
+## 技术栈
+
+- **后端**: Python / FastAPI / SQLite FTS5 / sqlglot
+- **前端**: Vue 3 / TypeScript / Vuetify 3 / Vite
+- **LLM**: 可插拔 `LLMClient`，默认 Stub；支持 OpenAI-compatible Provider
 
 ## 当前能力
 
-- FastAPI 服务骨架
-- `Database -> Space -> Table` 领域模型
-- `JoinRule` / `MetricRule` 元数据骨架
-- 内存元数据仓库
-- SQLite FTS5 索引服务骨架，支持 table / metric_rule 文档；JoinRule 作为 Space 级常驻上下文
-- FTS5 已接入基础 MATCH 检索流程，支持文档侧/查询侧对齐的轻量中文 token 发射
-- 确定性 SQL 生成与 `sqlglot` AST 校验
-- 可插拔 `LLMClient` 抽象，默认使用 `StubLLMClient` 保持 deterministic 行为
-- OpenAI-compatible LLM adapter（默认关闭）
-- SQL / Insight PromptBuilder 合同
-- SQL 生成与校验会基于 `DatabaseMeta.dialect` 选择 SQL 方言（当前支持 sqlite/postgres/mysql）
-- 执行层通过 `DatabaseConnector` 抽象接入数据库，当前内置 SQLite demo connector
-- SQL 生成会优先使用召回到的 MetricRule 指标口径
-- SQL 生成支持参考 Space 常驻 JoinRule 生成最小 JOIN 示例
-- SQLite 查询执行器，支持空结果、标量结果、结果截断
-- 查询 API：`POST /query`
-- 健康检查 API：`GET /health`
+- `Database -> Space -> Table` 领域模型，支持 `JoinRule` / `MetricRule`
+- SQLite FTS5 全文检索，支持中文 token 发射 + LLM 关键词扩展
+- SQL 生成与 `sqlglot` AST 校验（只读 SELECT、列/表白名单、JOIN 结构）
+- 多方言支持（sqlite / postgresql / mysql），SQL 方言自动切换
+- PostgreSQL schema introspection，批量导入表元数据
+- AI 辅助生成：表描述、JOIN 规则、Metric 规则
+- 查询 API：`POST /query`；健康检查：`GET /health`
 
 ## 运行方式
 
 ```bash
+# 后端
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
 uvicorn app.main:app --reload
+
+# 前端
+cd frontend
+npm install
+npm run dev
 ```
 
-如需启用 PostgreSQL 执行 connector，额外安装：
+如需启用 PostgreSQL connector：
 
 ```bash
 pip install -e .[postgres]
@@ -48,9 +106,9 @@ pip install -e .[postgres]
 pytest
 ```
 
-## 可选 LLM Provider 配置
+## LLM 配置
 
-默认不启用真实模型，系统使用 `StubLLMClient`。如需启用 OpenAI-compatible Provider，可设置：
+默认不启用真实模型，系统使用 `StubLLMClient`。如需启用 OpenAI-compatible Provider：
 
 ```bash
 export AGILEQUERY_LLM_PROVIDER=openai-compatible
@@ -60,33 +118,18 @@ export AGILEQUERY_LLM_MODEL=your-model
 export AGILEQUERY_LLM_TIMEOUT_SECONDS=30
 ```
 
-## 可选数据库连接配置
+## 数据库连接配置
 
 默认注册内置 `demo_sqlite` connector。可以通过 JSON 环境变量增加连接引用：
 
 ```bash
 export AGILEQUERY_DATABASE_CONNECTIONS_JSON='[
-  {"connection_ref":"local_demo","dialect":"sqlite-demo"},
   {
-    "connection_ref":"pg_sales",
-    "dialect":"postgresql",
-    "dsn":"postgresql://readonly_user:password@localhost:5432/sales",
-    "connect_timeout_seconds":10,
-    "statement_timeout_ms":30000
-  },
-  {"connection_ref":"mysql_sales","dialect":"mysql"}
+    "connection_ref": "pg_sales",
+    "dialect": "postgresql",
+    "dsn": "postgresql://readonly_user:password@localhost:5432/sales",
+    "connect_timeout_seconds": 10,
+    "statement_timeout_ms": 30000
+  }
 ]'
 ```
-
-当前 `postgresql` connector 基于可选依赖 `psycopg`；`mysql` connector 仍是占位，会返回清晰的“运行时驱动未配置”错误。
-
-PostgreSQL connector 还支持读取 schema 元数据：通过 `information_schema.columns` 将表/列转换为 `TableMeta` / `ColumnMeta`，用于后续元数据导入和 FTS5 重建流程。
-
-## 当前边界
-
-- OpenAI-compatible Provider 已有 adapter，但默认关闭；真实调用仍需配置环境变量
-- FTS5 目前只实现了轻量 Top-N 知识检索；JoinRule 不走召回，而是作为 Space 级 SQL 生成参考资料常驻上下文
-- SQL 生成目前是确定性占位实现，用来稳定打通主链路
-- 多数据库方言目前已接入 SQL 生成/校验层；执行层已有 connector registry，PostgreSQL 支持可选 `psycopg` connector 和 schema introspection，MySQL 仍是占位实现
-- SQL 校验目前已覆盖只读 SELECT、禁用 `SELECT *`、基础表/列/别名白名单和 JOIN 结构校验；JoinRule 是高置信提示而不是穷举白名单
-- 默认使用 SQLite 演示执行器，后续可替换成真实业务库只读连接

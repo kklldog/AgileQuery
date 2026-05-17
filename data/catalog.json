@@ -92,5 +92,621 @@
         ]
       }
     ]
+  },
+  {
+    "id": "pms",
+    "name": "PMS",
+    "dialect": "tsql",
+    "description": "",
+    "connection_ref": "pms",
+    "spaces": [
+      {
+        "id": "1",
+        "name": "Orders",
+        "description": "订单业务域。包括了，预定单，入住单，在线预定单，房间表。",
+        "sample_questions": [],
+        "tables": [
+          {
+            "name": "OnlinePreorder",
+            "business_name": "在线预订单",
+            "description": "该表用于记录客户通过线上渠道提交的酒店预订订单信息，包括入住时间、房型数量、价格、支付、取消等业务数据。主要用于支撑酒店预订管理、订单履约、支付跟踪及会员营销等业务场景。",
+            "alias": "on",
+            "columns": [
+              {
+                "name": "Id",
+                "data_type": "uniqueidentifier",
+                "description": "在线预订单唯一标识，用于区分每一笔预订记录。"
+              },
+              {
+                "name": "RoomType",
+                "data_type": "uniqueidentifier",
+                "description": "预订房型标识，表示客户所选择的房间类型。"
+              },
+              {
+                "name": "RoomCount",
+                "data_type": "int",
+                "description": "预订房间数量，表示本次订单需要预留的房间间数。"
+              },
+              {
+                "name": "Customer",
+                "data_type": "nvarchar",
+                "description": "预订客户姓名或联系人名称，用于登记订单所属客户。"
+              },
+              {
+                "name": "HotelCode",
+                "data_type": "int",
+                "description": "酒店编码，用于标识订单所属的具体酒店门店。"
+              },
+              {
+                "name": "ArriveTime",
+                "data_type": "datetime",
+                "description": "预计到店时间，表示客户计划到达酒店办理入住的时间。"
+              },
+              {
+                "name": "KeepTime",
+                "data_type": "datetime",
+                "description": "保留时间，表示酒店为该预订保留房间的截止时间。"
+              },
+              {
+                "name": "OverTime",
+                "data_type": "datetime",
+                "description": "超时时间，表示订单超过该时间后可能失效或不再保留。"
+              },
+              {
+                "name": "CheckinDay",
+                "data_type": "datetime",
+                "description": "入住日期，表示客户计划开始入住的日期。"
+              },
+              {
+                "name": "CheckoutDay",
+                "data_type": "datetime",
+                "description": "离店日期，表示客户计划退房离开的日期。"
+              },
+              {
+                "name": "StayDays",
+                "data_type": "int",
+                "description": "入住天数，表示本次预订连续住宿的总天数。"
+              },
+              {
+                "name": "MemberId",
+                "data_type": "uniqueidentifier",
+                "description": "会员标识，表示该订单关联的会员客户信息。"
+              },
+              {
+                "name": "RoomPrice",
+                "data_type": "int",
+                "description": "房间原始单价，表示未优惠前的房费标准价格。"
+              },
+              {
+                "name": "DiscountPrice",
+                "data_type": "int",
+                "description": "优惠金额或优惠后调整值，用于记录订单享受的价格优惠。"
+              },
+              {
+                "name": "DiscountCardId",
+                "data_type": "uniqueidentifier",
+                "description": "优惠券或折扣卡标识，表示本次订单使用的优惠权益。"
+              },
+              {
+                "name": "TotalPrice",
+                "data_type": "int",
+                "description": "订单总金额，表示本次预订应付或实际结算的总费用。"
+              },
+              {
+                "name": "CreateTime",
+                "data_type": "datetime",
+                "description": "订单创建时间，表示该预订单生成的时间。"
+              },
+              {
+                "name": "Status",
+                "data_type": "int",
+                "description": "订单状态，表示预订单当前所处的业务状态，如待支付、已确认、已取消等。"
+              },
+              {
+                "name": "PayType",
+                "data_type": "int",
+                "description": "支付类型，表示订单采用的支付分类方式，如线上支付、到店支付等。"
+              },
+              {
+                "name": "PaymentWay",
+                "data_type": "int",
+                "description": "支付方式，表示客户实际使用的支付渠道或工具，如微信、支付宝、银行卡等。"
+              },
+              {
+                "name": "PaymentTime",
+                "data_type": "datetime",
+                "description": "支付时间，表示订单完成付款的时间。"
+              },
+              {
+                "name": "PreOrderNo",
+                "data_type": "nvarchar",
+                "description": "预订单编号，用于业务侧查询、跟踪和识别订单。"
+              },
+              {
+                "name": "Tel",
+                "data_type": "nvarchar",
+                "description": "联系电话，表示预订客户或联系人的手机号码。"
+              },
+              {
+                "name": "CancelReason",
+                "data_type": "nvarchar",
+                "description": "取消原因，记录订单被取消时填写的原因说明。"
+              },
+              {
+                "name": "Score",
+                "data_type": "decimal",
+                "description": "积分值，表示订单关联的积分使用、返还或赠送数量。"
+              },
+              {
+                "name": "Remark",
+                "data_type": "nvarchar",
+                "description": "备注信息，用于记录订单的补充说明或特殊要求。"
+              },
+              {
+                "name": "CancelTime",
+                "data_type": "datetime",
+                "description": "取消时间，表示订单被取消的具体时间。"
+              },
+              {
+                "name": "CancelUser",
+                "data_type": "uniqueidentifier",
+                "description": "取消人标识，表示执行订单取消操作的用户或员工。"
+              },
+              {
+                "name": "AddFrom",
+                "data_type": "int",
+                "description": "订单来源，表示该预订单的创建渠道或录入来源，如官网、小程序、前台等。"
+              },
+              {
+                "name": "Brand",
+                "data_type": "nvarchar",
+                "description": "品牌信息，表示订单所属酒店品牌名称。"
+              }
+            ]
+          },
+          {
+            "name": "Order",
+            "business_name": "订单表",
+            "description": "该表用于记录酒店订单的核心业务信息，包括预订人、入住安排、房间信息、价格、支付方式及订单状态等内容。适用于酒店预订、入住、联房、结账及财务核算等业务场景。",
+            "alias": "or",
+            "columns": [
+              {
+                "name": "Id",
+                "data_type": "uniqueidentifier",
+                "description": "订单唯一标识，用于区分每一笔订单记录。"
+              },
+              {
+                "name": "HotelCode",
+                "data_type": "int",
+                "description": "酒店编码，用于标识订单所属的酒店。"
+              },
+              {
+                "name": "OrderNo",
+                "data_type": "nvarchar",
+                "description": "订单号，业务侧用于查询、追踪和管理订单。"
+              },
+              {
+                "name": "Booker",
+                "data_type": "nvarchar",
+                "description": "预订人姓名，即下单或登记预订的客户名称。"
+              },
+              {
+                "name": "BookerTel",
+                "data_type": "nvarchar",
+                "description": "预订人联系电话，用于订单确认、通知和联系。"
+              },
+              {
+                "name": "BookerMemberId",
+                "data_type": "uniqueidentifier",
+                "description": "预订人会员标识，关联会员体系中的客户信息。"
+              },
+              {
+                "name": "PaymentWay",
+                "data_type": "int",
+                "description": "支付方式，表示订单采用的付款类型，如现付、预付、挂账等。"
+              },
+              {
+                "name": "Channel",
+                "data_type": "int",
+                "description": "订单渠道，表示订单来源，如前台、自有平台、OTA等。"
+              },
+              {
+                "name": "CustomerType",
+                "data_type": "int",
+                "description": "客户类型，用于区分散客、协议客户、团队客户等类别。"
+              },
+              {
+                "name": "SellType",
+                "data_type": "int",
+                "description": "销售类型，用于标识订单对应的销售或售卖模式。"
+              },
+              {
+                "name": "PreOrderNo",
+                "data_type": "nvarchar",
+                "description": "预订单号，对应订单生成前的预订记录编号。"
+              },
+              {
+                "name": "ContractUnit",
+                "data_type": "uniqueidentifier",
+                "description": "协议单位标识，用于关联企业客户或签约单位信息。"
+              },
+              {
+                "name": "StayDays",
+                "data_type": "int",
+                "description": "入住天数，表示客户本次预订或入住的总晚数。"
+              },
+              {
+                "name": "StayTime",
+                "data_type": "datetime",
+                "description": "入住时间，表示客户计划或实际开始入住的时间。"
+              },
+              {
+                "name": "RoomType",
+                "data_type": "uniqueidentifier",
+                "description": "房型标识，用于关联订单所预订或入住的房间类型。"
+              },
+              {
+                "name": "RoomNo",
+                "data_type": "nvarchar",
+                "description": "房号，表示客户实际入住或分配的房间编号。"
+              },
+              {
+                "name": "RoomPrice",
+                "data_type": "decimal",
+                "description": "房价，表示订单中房间的原始或基础单价。"
+              },
+              {
+                "name": "Status",
+                "data_type": "int",
+                "description": "订单状态，用于表示订单当前所处阶段，如预订、入住中、已退房、已取消等。"
+              },
+              {
+                "name": "Remark",
+                "data_type": "nvarchar",
+                "description": "备注信息，用于记录订单相关的补充说明或特殊要求。"
+              },
+              {
+                "name": "CreateTime",
+                "data_type": "datetime",
+                "description": "创建时间，表示订单记录生成的时间。"
+              },
+              {
+                "name": "PreOrderId",
+                "data_type": "uniqueidentifier",
+                "description": "预订单唯一标识，用于关联对应的预订记录。"
+              },
+              {
+                "name": "LeaveTime",
+                "data_type": "datetime",
+                "description": "离店时间，表示客户计划或实际离开的时间。"
+              },
+              {
+                "name": "KeepTime",
+                "data_type": "datetime",
+                "description": "保留时间，表示订单或房间预留到的截止时间。"
+              },
+              {
+                "name": "MainCustomerName",
+                "data_type": "nvarchar",
+                "description": "主住客姓名，表示订单中主要入住人的名称。"
+              },
+              {
+                "name": "MainCustomerId",
+                "data_type": "uniqueidentifier",
+                "description": "主住客标识，用于关联主要入住人的客户档案信息。"
+              },
+              {
+                "name": "CheckOutTime",
+                "data_type": "datetime",
+                "description": "退房时间，表示客户实际办理退房的时间。"
+              },
+              {
+                "name": "UnionId",
+                "data_type": "uniqueidentifier",
+                "description": "联房标识，用于标记关联到同一联房关系中的订单。"
+              },
+              {
+                "name": "IsMainRoom",
+                "data_type": "bit",
+                "description": "是否主房标识，表示当前订单对应房间是否为联房中的主房。"
+              },
+              {
+                "name": "UnionTime",
+                "data_type": "datetime",
+                "description": "联房时间，表示订单建立联房关系的时间。"
+              },
+              {
+                "name": "Operator",
+                "data_type": "uniqueidentifier",
+                "description": "操作人标识，表示创建或处理该订单的员工或系统用户。"
+              },
+              {
+                "name": "FinalPrice",
+                "data_type": "decimal",
+                "description": "最终成交价，表示订单实际结算或确认后的房价金额。"
+              },
+              {
+                "name": "IsUsePoint",
+                "data_type": "bit",
+                "description": "是否使用积分，表示该订单是否使用会员积分进行抵扣或支付。"
+              },
+              {
+                "name": "PxTime",
+                "data_type": "datetime",
+                "description": "排房时间，表示订单完成房间分配或排房操作的时间。"
+              },
+              {
+                "name": "IncludeBreakfast",
+                "data_type": "bit",
+                "description": "是否含早餐，表示订单房价是否包含早餐服务。"
+              },
+              {
+                "name": "IsVirtual",
+                "data_type": "bit",
+                "description": "是否虚拟房标识，表示该订单是否对应虚拟房间或虚拟占房场景。"
+              },
+              {
+                "name": "RoomId",
+                "data_type": "uniqueidentifier",
+                "description": "房间标识，用于关联具体房间的主数据。"
+              },
+              {
+                "name": "OtaNo",
+                "data_type": "nvarchar",
+                "description": "OTA订单号，表示外部在线旅游平台传入的订单编号。"
+              },
+              {
+                "name": "FinanceDate",
+                "data_type": "date",
+                "description": "财务日期，用于财务入账、对账和经营统计的业务日期。"
+              }
+            ]
+          },
+          {
+            "name": "PreOrder",
+            "business_name": "预订单信息表",
+            "description": "用于存储酒店客户预订入住前的订单信息，包括预订人、入住人、房型房量、价格、渠道、支付及证件等内容。该表主要支撑酒店预订受理、排房、到店登记、渠道对账和订单状态管理等业务场景。",
+            "alias": "pr",
+            "columns": [
+              {
+                "name": "Id",
+                "data_type": "uniqueidentifier",
+                "description": "预订单主键标识，唯一标识一条预订记录。"
+              },
+              {
+                "name": "HotelCode",
+                "data_type": "int",
+                "description": "酒店编码，用于标识该预订单所属的酒店门店。"
+              },
+              {
+                "name": "OrderNo",
+                "data_type": "nvarchar",
+                "description": "预订单号，酒店内部用于识别和查询订单的业务编号。"
+              },
+              {
+                "name": "Booker",
+                "data_type": "nvarchar",
+                "description": "预订人姓名，即提交预订的联系人姓名。"
+              },
+              {
+                "name": "BookerTel",
+                "data_type": "nvarchar",
+                "description": "预订人联系电话，用于订单确认、通知和联系沟通。"
+              },
+              {
+                "name": "CustomerId",
+                "data_type": "uniqueidentifier",
+                "description": "客户标识，关联客户主数据，用于识别会员或常住客信息。"
+              },
+              {
+                "name": "ArriveTime",
+                "data_type": "datetime",
+                "description": "预计到店时间，表示客人计划到达酒店办理入住的时间。"
+              },
+              {
+                "name": "KeepTime",
+                "data_type": "datetime",
+                "description": "保留时间，表示酒店为该预订保留房间的截止时间。"
+              },
+              {
+                "name": "PaymentWay",
+                "data_type": "int",
+                "description": "支付方式，记录该预订采用的结算或付款方式。"
+              },
+              {
+                "name": "Channel",
+                "data_type": "int",
+                "description": "预订渠道，表示订单来源渠道，如前台、官网、OTA或协议单位等。"
+              },
+              {
+                "name": "CustomerType",
+                "data_type": "int",
+                "description": "客户类型，用于区分散客、会员、协议客户、团队客户等类别。"
+              },
+              {
+                "name": "SellType",
+                "data_type": "int",
+                "description": "销售类型，表示该订单对应的销售模式或业务类型。"
+              },
+              {
+                "name": "OutOrderNo",
+                "data_type": "nvarchar",
+                "description": "外部订单号，用于记录第三方平台或外部系统中的订单编号。"
+              },
+              {
+                "name": "ContractUnit",
+                "data_type": "uniqueidentifier",
+                "description": "协议单位标识，关联签约单位或公司客户信息。"
+              },
+              {
+                "name": "StayPerson",
+                "data_type": "nvarchar",
+                "description": "入住人姓名，即实际入住酒店的客人姓名。"
+              },
+              {
+                "name": "StayPersonTel",
+                "data_type": "nvarchar",
+                "description": "入住人联系电话，用于到店联络或入住确认。"
+              },
+              {
+                "name": "StayDays",
+                "data_type": "int",
+                "description": "入住天数，表示本次预订预计住宿的晚数或天数。"
+              },
+              {
+                "name": "RoomType",
+                "data_type": "uniqueidentifier",
+                "description": "房型标识，关联酒店房型信息，表示预订的房间类别。"
+              },
+              {
+                "name": "RoomCount",
+                "data_type": "int",
+                "description": "预订房间数，表示本次订单预订的房间数量。"
+              },
+              {
+                "name": "Price",
+                "data_type": "decimal",
+                "description": "预订价格，表示订单对应的房价或总预订价格。"
+              },
+              {
+                "name": "Remark",
+                "data_type": "nvarchar",
+                "description": "备注信息，用于记录订单的特殊要求、说明或补充信息。"
+              },
+              {
+                "name": "Status",
+                "data_type": "int",
+                "description": "订单状态，表示预订单当前所处的业务状态，如待到店、已入住、已取消等。"
+              },
+              {
+                "name": "CreateTime",
+                "data_type": "datetime",
+                "description": "创建时间，表示该预订单记录生成的时间。"
+              },
+              {
+                "name": "RoomNo",
+                "data_type": "nvarchar",
+                "description": "房号，表示已分配或指定的具体房间号码。"
+              },
+              {
+                "name": "Sex",
+                "data_type": "int",
+                "description": "性别，记录入住人的性别信息。"
+              },
+              {
+                "name": "Birth",
+                "data_type": "date",
+                "description": "出生日期，记录入住人的出生日期。"
+              },
+              {
+                "name": "Address",
+                "data_type": "nvarchar",
+                "description": "联系地址，记录入住人或客户的地址信息。"
+              },
+              {
+                "name": "CredentialsType",
+                "data_type": "int",
+                "description": "证件类型，表示入住人使用的身份证件类别。"
+              },
+              {
+                "name": "CredentialsNo",
+                "data_type": "nvarchar",
+                "description": "证件号码，记录入住人证件的编号。"
+              },
+              {
+                "name": "LeaveTime",
+                "data_type": "datetime",
+                "description": "离店时间，表示客人预计或实际离店的时间。"
+              },
+              {
+                "name": "Operator",
+                "data_type": "uniqueidentifier",
+                "description": "操作人标识，记录创建或维护该订单的员工或系统用户。"
+              },
+              {
+                "name": "OtaNo",
+                "data_type": "nvarchar",
+                "description": "OTA单号，记录在线旅游平台对应的订单编号。"
+              },
+              {
+                "name": "FinanceDate",
+                "data_type": "date",
+                "description": "财务日期，用于财务核算、对账或入账统计的业务日期。"
+              },
+              {
+                "name": "ProofImg",
+                "data_type": "nvarchar",
+                "description": "凭证图片，存储订单相关支付凭证、担保凭证或证明材料的图片地址。"
+              },
+              {
+                "name": "AddFrom",
+                "data_type": "int",
+                "description": "新增来源，表示该订单是通过哪个系统端或入口创建的。"
+              },
+              {
+                "name": "OTAOrderType",
+                "data_type": "int",
+                "description": "OTA订单类型，表示在线旅游平台订单的业务分类，如预付、现付等。"
+              },
+              {
+                "name": "OTAPrepayAmount",
+                "data_type": "decimal",
+                "description": "OTA预付金额，表示第三方平台已预付的订单金额。"
+              }
+            ]
+          },
+          {
+            "name": "Room",
+            "business_name": "客房信息表",
+            "description": "该表用于维护酒店客房的基础档案信息，包括客房编号、所属酒店、房型、楼层及状态等内容。通常用于客房管理、销售控制、入住分配等业务场景。",
+            "alias": "ro",
+            "columns": [
+              {
+                "name": "Id",
+                "data_type": "uniqueidentifier",
+                "description": "客房记录唯一标识，用于唯一标识一间客房。"
+              },
+              {
+                "name": "HotelCode",
+                "data_type": "int",
+                "description": "酒店编码，表示该客房所属的酒店。"
+              },
+              {
+                "name": "RoomNo",
+                "data_type": "nvarchar",
+                "description": "房间号，用于标识客房的实际编号。"
+              },
+              {
+                "name": "RoomTypeId",
+                "data_type": "uniqueidentifier",
+                "description": "房型标识，关联客房所属的房型信息，如标准间、大床房等。"
+              },
+              {
+                "name": "Floor",
+                "data_type": "int",
+                "description": "楼层，表示客房所在的楼层位置。"
+              },
+              {
+                "name": "Status",
+                "data_type": "int",
+                "description": "客房状态，表示客房当前的业务状态，如可用、维修、停用等。"
+              },
+              {
+                "name": "Remark",
+                "data_type": "nvarchar",
+                "description": "备注，用于记录客房的补充说明或特殊信息。"
+              },
+              {
+                "name": "SellStatus",
+                "data_type": "int",
+                "description": "销售状态，表示客房当前是否可对外销售或销售控制情况。"
+              }
+            ]
+          }
+        ],
+        "join_rules": [],
+        "metric_rules": []
+      }
+    ]
   }
 ]

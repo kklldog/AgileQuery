@@ -76,10 +76,40 @@ class InMemoryCatalogRepository:
         )
         return cls([demo_database])
 
+    def add_database(self, database: DatabaseMeta) -> None:
+        if database.id in self._databases:
+            raise CatalogLookupError(f"Database already exists: {database.id}")
+        self._databases[database.id] = database
+
+    def delete_database(self, database_id: str) -> None:
+        if database_id not in self._databases:
+            raise CatalogLookupError(f"Unknown database: {database_id}")
+        del self._databases[database_id]
+
     def get_database(self, database_id: str) -> DatabaseMeta:
         if database_id not in self._databases:
             raise CatalogLookupError(f"Unknown database: {database_id}")
         return self._databases[database_id]
+
+    def update_database(
+        self,
+        database_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        dialect: str | None = None,
+    ) -> DatabaseMeta:
+        existing = self.get_database(database_id)
+        updated = DatabaseMeta(
+            id=existing.id,
+            name=name if name is not None else existing.name,
+            dialect=dialect if dialect is not None else existing.dialect,
+            description=description if description is not None else existing.description,
+            connection_ref=existing.connection_ref,
+            spaces=list(existing.spaces),
+        )
+        self._databases[database_id] = updated
+        return updated
 
     def get_space(self, database_id: str, space_id: str) -> SpaceMeta:
         database = self.get_database(database_id)
@@ -94,11 +124,80 @@ class InMemoryCatalogRepository:
     def list_tables(self, database_id: str, space_id: str) -> list[TableMeta]:
         return list(self.get_space(database_id, space_id).tables)
 
+    def delete_space(self, database_id: str, space_id: str) -> None:
+        database = self.get_database(database_id)
+        if not any(space.id == space_id for space in database.spaces):
+            raise CatalogLookupError(f"Unknown space: {space_id}")
+        self._databases[database_id] = DatabaseMeta(
+            id=database.id,
+            name=database.name,
+            dialect=database.dialect,
+            description=database.description,
+            connection_ref=database.connection_ref,
+            spaces=[s for s in database.spaces if s.id != space_id],
+        )
+
+    def add_space(self, database_id: str, space: SpaceMeta) -> None:
+        database = self.get_database(database_id)
+        if any(existing_space.id == space.id for existing_space in database.spaces):
+            raise CatalogLookupError(f"Space already exists: {space.id}")
+        self._databases[database_id] = DatabaseMeta(
+            id=database.id,
+            name=database.name,
+            dialect=database.dialect,
+            description=database.description,
+            connection_ref=database.connection_ref,
+            spaces=[*database.spaces, space],
+        )
+
     def list_join_rules(self, database_id: str, space_id: str) -> list[JoinRuleMeta]:
         return list(self.get_space(database_id, space_id).join_rules)
 
     def list_metric_rules(self, database_id: str, space_id: str) -> list[MetricRuleMeta]:
         return list(self.get_space(database_id, space_id).metric_rules)
+
+    def update_space(
+        self,
+        database_id: str,
+        space_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        tables: list[TableMeta] | None = None,
+        join_rules: list[JoinRuleMeta] | None = None,
+        metric_rules: list[MetricRuleMeta] | None = None,
+    ) -> SpaceMeta:
+        database = self.get_database(database_id)
+        if not any(space.id == space_id for space in database.spaces):
+            raise CatalogLookupError(f"Unknown space: {space_id}")
+
+        updated_spaces: list[SpaceMeta] = []
+        updated: SpaceMeta | None = None
+        for space in database.spaces:
+            if space.id == space_id:
+                updated = SpaceMeta(
+                    id=space.id,
+                    name=name if name is not None else space.name,
+                    description=description if description is not None else space.description,
+                    sample_questions=list(space.sample_questions),
+                    tables=tables if tables is not None else list(space.tables),
+                    join_rules=join_rules if join_rules is not None else list(space.join_rules),
+                    metric_rules=metric_rules if metric_rules is not None else list(space.metric_rules),
+                )
+                updated_spaces.append(updated)
+            else:
+                updated_spaces.append(space)
+
+        self._databases[database_id] = DatabaseMeta(
+            id=database.id,
+            name=database.name,
+            dialect=database.dialect,
+            description=database.description,
+            connection_ref=database.connection_ref,
+            spaces=updated_spaces,
+        )
+        assert updated is not None
+        return updated
 
     def update_space_tables(self, database_id: str, space_id: str, tables: list[TableMeta]) -> None:
         database = self.get_database(database_id)
@@ -159,6 +258,45 @@ class JsonFileCatalogRepository(InMemoryCatalogRepository):
     def update_space_tables(self, database_id: str, space_id: str, tables: list[TableMeta]) -> None:
         super().update_space_tables(database_id, space_id, tables)
         self._save_to_file()
+
+    def add_database(self, database: DatabaseMeta) -> None:
+        super().add_database(database)
+        self._save_to_file()
+
+    def delete_database(self, database_id: str) -> None:
+        super().delete_database(database_id)
+        self._save_to_file()
+
+    def add_space(self, database_id: str, space: SpaceMeta) -> None:
+        super().add_space(database_id, space)
+        self._save_to_file()
+
+    def delete_space(self, database_id: str, space_id: str) -> None:
+        super().delete_space(database_id, space_id)
+        self._save_to_file()
+
+    def update_space(
+        self,
+        database_id: str,
+        space_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        tables: list[TableMeta] | None = None,
+        join_rules: list[JoinRuleMeta] | None = None,
+        metric_rules: list[MetricRuleMeta] | None = None,
+    ) -> SpaceMeta:
+        updated = super().update_space(
+            database_id,
+            space_id,
+            name=name,
+            description=description,
+            tables=tables,
+            join_rules=join_rules,
+            metric_rules=metric_rules,
+        )
+        self._save_to_file()
+        return updated
 
     def _parse_database(self, data: dict) -> DatabaseMeta:
         return DatabaseMeta(

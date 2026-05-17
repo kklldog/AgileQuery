@@ -1,13 +1,16 @@
+import json
 import sqlite3
 
 from app.domain.errors import QueryValidationError
 from app.domain.models import JoinRuleMeta, MetricRuleMeta, RetrievedContext, SpaceMeta, TableMeta
+from app.integrations.llm_client import LLMClient
 from app.repositories.catalog import InMemoryCatalogRepository
 
 
 class RetrievalService:
-    def __init__(self, catalog: InMemoryCatalogRepository) -> None:
+    def __init__(self, catalog: InMemoryCatalogRepository, llm_client: LLMClient | None = None) -> None:
         self._catalog = catalog
+        self._llm_client = llm_client
         try:
             self._fts_connection = sqlite3.connect(":memory:")
             self._initialize_fts_schema()
@@ -37,18 +40,22 @@ class RetrievalService:
     def retrieve(self, database_id: str, question: str, space_id: str | None = None) -> RetrievedContext:
         database = self._catalog.get_database(database_id)
         resolved_space, routing_diagnostics = self._resolve_space(database_id, question, space_id)
+        llm_terms = self._llm_expand_keywords(question)
         strong_terms, fallback_terms = self._extract_keywords(question)
         strong_terms, fallback_terms = self._filter_resolved_space_terms(strong_terms, fallback_terms, resolved_space)
+        llm_terms = self._filter_resolved_space_terms(llm_terms, [], resolved_space)[0]
         tables, metric_rules, retrieval_diagnostics = self._fts_retrieve_context(
             database_id,
             resolved_space.id,
             strong_terms,
             fallback_terms,
+            llm_terms,
         )
         join_rules = self._catalog.list_join_rules(database_id, resolved_space.id)
         diagnostics = [
             f"routed_space={resolved_space.id}",
             f"keywords={','.join([*strong_terms, *fallback_terms])}",
+            f"llm_keywords={','.join(llm_terms)}" if llm_terms else "llm_keywords=none",
             f"context_join_rules={','.join([join_rule.id for join_rule in join_rules])}",
             *routing_diagnostics,
             *retrieval_diagnostics,
@@ -92,6 +99,26 @@ class RetrievalService:
 
         return top_space, [f"routing_strategy=scored", f"routing_scores={score_details}"]
 
+    def _llm_expand_keywords(self, question: str) -> list[str]:
+        if self._llm_client is None:
+            return []
+        prompt = (
+            f"从以下问题中提取核心业务关键词，并为每个关键词联想2-3个同义词或相关词，用于数据库文档检索。"
+            f"只返回一个 JSON 数组，包含所有关键词和同义词，不要输出其他内容。\n\n"
+            f"示例：\n问题: \"25年一共多少订单量\"\n"
+            f"输出: [\"订单\", \"订单量\", \"order\", \"订单数\", \"订单总量\", \"单量\"]\n\n"
+            f"问题: \"{question}\"\n输出:"
+        )
+        try:
+            raw = self._llm_client.complete(prompt).strip()
+            start = raw.find("[")
+            end = raw.rfind("]") + 1
+            if start == -1 or end == 0:
+                return []
+            return [str(t).strip() for t in json.loads(raw[start:end]) if isinstance(t, str) and str(t).strip()]
+        except Exception:
+            return []
+
     def _extract_keywords(self, question: str) -> tuple[list[str], list[str]]:
         normalized = question.replace("?", " ").replace("？", " ").strip()
         words = [token for token in normalized.split() if token]
@@ -107,6 +134,7 @@ class RetrievalService:
         space_id: str,
         strong_terms: list[str],
         fallback_terms: list[str],
+        llm_terms: list[str] | None = None,
     ) -> tuple[list[TableMeta], list[MetricRuleMeta], list[str]]:
         diagnostics: list[str] = []
 
@@ -124,6 +152,27 @@ class RetrievalService:
                     [
                         "match_strategy=strong_and",
                         f"match_expression={strong_expression}",
+                        f"matched_tables={','.join([table.name for table in tables])}",
+                        f"matched_metric_rules={','.join([metric_rule.id for metric_rule in metric_rules])}",
+                        f"retrieved_tables={len(tables)}",
+                    ]
+                )
+                return tables, metric_rules, diagnostics
+
+        if llm_terms:
+            llm_expression = " OR ".join([self._quote_match_term(term) for term in llm_terms])
+            llm_matches = self._query_document_matches(database_id, space_id, llm_expression)
+            if llm_matches:
+                tables, metric_rules = self._resolve_document_matches(
+                    database_id,
+                    space_id,
+                    llm_matches,
+                    [*llm_terms, *strong_terms, *fallback_terms],
+                )
+                diagnostics.extend(
+                    [
+                        "match_strategy=llm_or",
+                        f"match_expression={llm_expression}",
                         f"matched_tables={','.join([table.name for table in tables])}",
                         f"matched_metric_rules={','.join([metric_rule.id for metric_rule in metric_rules])}",
                         f"retrieved_tables={len(tables)}",

@@ -9,6 +9,8 @@ class Settings(BaseModel):
     default_max_rows: int = Field(default=50, ge=1, le=1000)
     sqlite_uri: str = "file:agilequery_demo?mode=memory&cache=shared"
     catalog_file_path: str = "data/catalog.json"
+    connections_file_path: str = "data/connections.json"
+    llm_config_file_path: str = "data/llm_config.json"
     llm_provider: str = "stub"
     llm_base_url: str = ""
     llm_api_key: str = ""
@@ -21,6 +23,8 @@ class Settings(BaseModel):
 def get_settings() -> Settings:
     return Settings(
         catalog_file_path=getenv("AGILEQUERY_CATALOG_FILE_PATH", "data/catalog.json"),
+        connections_file_path=getenv("AGILEQUERY_CONNECTIONS_FILE_PATH", "data/connections.json"),
+        llm_config_file_path=getenv("AGILEQUERY_LLM_CONFIG_FILE_PATH", "data/llm_config.json"),
         llm_provider=getenv("AGILEQUERY_LLM_PROVIDER", "stub"),
         llm_base_url=getenv("AGILEQUERY_LLM_BASE_URL", ""),
         llm_api_key=getenv("AGILEQUERY_LLM_API_KEY", ""),

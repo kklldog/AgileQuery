@@ -11,6 +11,11 @@ try:
 except ImportError:  # pragma: no cover - exercised by explicit runtime branch
     psycopg = None
 
+try:
+    import pyodbc  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover - exercised by explicit runtime branch
+    pyodbc = None
+
 
 @dataclass(frozen=True)
 class ConnectorQueryResult:
@@ -134,6 +139,36 @@ class PostgresConnector:
         finally:
             connection.close()
 
+    def introspect_objects(self, schema: str = "public") -> list[dict]:
+        connection = self._connect()
+        try:
+            with connection.transaction():
+                kinds_cursor = connection.execute(
+                    """
+                    SELECT table_name, table_type
+                    FROM information_schema.tables
+                    WHERE table_schema = %s
+                    ORDER BY table_name
+                    """,
+                    (schema,),
+                )
+                kinds_rows = kinds_cursor.fetchall()
+                cols_cursor = connection.execute(
+                    """
+                    SELECT table_name, column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = %s
+                    ORDER BY table_name, ordinal_position
+                    """,
+                    (schema,),
+                )
+                cols_rows = cols_cursor.fetchall()
+            return _assemble_objects(kinds_rows, cols_rows, "PostgreSQL")
+        except Exception as exc:
+            raise QueryValidationError(f"PostgreSQL schema introspection failed: {exc}") from exc
+        finally:
+            connection.close()
+
     def _connect(self):
         if psycopg is None:
             raise QueryValidationError(
@@ -205,6 +240,172 @@ class PostgresConnector:
         return "".join(part[0] for part in parts).lower()
 
 
+class SqlServerConnector:
+    dialect = "tsql"
+
+    def __init__(
+        self,
+        dsn: str,
+        connection_ref: str,
+        connect_timeout_seconds: int = 10,
+        statement_timeout_ms: int = 30000,
+    ) -> None:
+        self.dsn = dsn
+        self.connection_ref = connection_ref
+        self.connect_timeout_seconds = connect_timeout_seconds
+        self.statement_timeout_ms = statement_timeout_ms
+        if not self.dsn:
+            raise QueryValidationError(f"SQL Server connector is missing dsn: {connection_ref}")
+
+    def execute(self, sql: str, max_rows: int) -> ConnectorQueryResult:
+        connection = self._connect()
+        try:
+            return self._execute_with_connection(connection, sql, max_rows)
+        finally:
+            connection.close()
+
+    def introspect_tables(self, schema: str = "dbo") -> list[TableMeta]:
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = ?
+                ORDER BY table_name, ordinal_position
+                """,
+                schema,
+            )
+            rows = cursor.fetchall()
+            return self._rows_to_table_meta(rows)
+        except Exception as exc:
+            raise QueryValidationError(f"SQL Server schema introspection failed: {exc}") from exc
+        finally:
+            connection.close()
+
+    def introspect_objects(self, schema: str = "dbo") -> list[dict]:
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                SELECT table_name, table_type
+                FROM information_schema.tables
+                WHERE table_schema = ?
+                ORDER BY table_name
+                """,
+                schema,
+            )
+            kinds_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT table_name, column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = ?
+                ORDER BY table_name, ordinal_position
+                """,
+                schema,
+            )
+            cols_rows = cursor.fetchall()
+            return _assemble_objects(kinds_rows, cols_rows, "SQL Server")
+        except Exception as exc:
+            raise QueryValidationError(f"SQL Server schema introspection failed: {exc}") from exc
+        finally:
+            connection.close()
+
+    def _connect(self):
+        if pyodbc is None:
+            raise QueryValidationError(
+                "pyodbc is required for SQL Server execution. Install with: pip install -e .[sqlserver]"
+            )
+        try:
+            connection = pyodbc.connect(
+                self.dsn,
+                timeout=self.connect_timeout_seconds,
+                readonly=True,
+                autocommit=False,
+            )
+        except Exception as exc:
+            raise QueryValidationError(f"SQL Server connection failed: {exc}") from exc
+
+        try:
+            connection.timeout = int(self.statement_timeout_ms / 1000) or 1
+        except Exception:  # pragma: no cover - driver-specific
+            pass
+        return connection
+
+    def _execute_with_connection(self, connection, sql: str, max_rows: int) -> ConnectorQueryResult:
+        try:
+            cursor = connection.cursor()
+            cursor.execute(sql)
+            fetched_rows = cursor.fetchmany(max_rows + 1)
+            is_truncated = len(fetched_rows) > max_rows
+            rows = fetched_rows[:max_rows]
+            columns = [description[0] for description in cursor.description or []]
+            diagnostics = [
+                f"row_limit={max_rows}",
+                f"statement_timeout_ms={self.statement_timeout_ms}",
+                "read_only=true",
+            ]
+            if is_truncated:
+                diagnostics.append("result_truncated=true")
+            return ConnectorQueryResult(
+                columns=columns,
+                rows=[list(row) for row in rows],
+                is_truncated=is_truncated,
+                diagnostics=diagnostics,
+            )
+        except Exception as exc:
+            raise QueryValidationError(f"SQL Server execution failed: {exc}") from exc
+
+    def _rows_to_table_meta(self, rows) -> list[TableMeta]:
+        tables: dict[str, list[ColumnMeta]] = {}
+        for table_name, column_name, data_type in rows:
+            tables.setdefault(table_name, []).append(
+                ColumnMeta(
+                    name=column_name,
+                    data_type=data_type,
+                    description=f"SQL Server column {table_name}.{column_name}",
+                )
+            )
+        return [
+            TableMeta(
+                name=table_name,
+                business_name=table_name,
+                description=f"SQL Server table {table_name}",
+                alias=self._make_alias(table_name),
+                columns=columns,
+            )
+            for table_name, columns in tables.items()
+        ]
+
+    def _make_alias(self, table_name: str) -> str:
+        parts = [part for part in table_name.split("_") if part]
+        if len(parts) == 1:
+            return parts[0][:2].lower()
+        return "".join(part[0] for part in parts).lower()
+
+
+def _assemble_objects(kinds_rows, cols_rows, source_label: str) -> list[dict]:
+    columns_by_table: dict[str, list[dict]] = {}
+    for table_name, column_name, data_type in cols_rows:
+        columns_by_table.setdefault(table_name, []).append({
+            "name": column_name,
+            "data_type": data_type,
+            "description": f"{source_label} column {table_name}.{column_name}",
+        })
+    objects: list[dict] = []
+    for table_name, table_type in kinds_rows:
+        kind = "view" if str(table_type).upper().endswith("VIEW") else "table"
+        objects.append({
+            "name": table_name,
+            "kind": kind,
+            "columns": columns_by_table.get(table_name, []),
+        })
+    return objects
+
+
 def build_default_connector_registry() -> dict[str, DatabaseConnector]:
     return {"demo_sqlite": SQLiteDemoConnector()}
 
@@ -234,6 +435,14 @@ def build_connector_registry_from_json(config_json: str) -> dict[str, DatabaseCo
             continue
         if dialect in {"postgres", "postgresql"}:
             registry[connection_ref] = PostgresConnector(
+                dsn=str(entry.get("dsn", "")),
+                connection_ref=connection_ref,
+                connect_timeout_seconds=int(entry.get("connect_timeout_seconds", 10)),
+                statement_timeout_ms=int(entry.get("statement_timeout_ms", 30000)),
+            )
+            continue
+        if dialect in {"sqlserver", "mssql", "tsql"}:
+            registry[connection_ref] = SqlServerConnector(
                 dsn=str(entry.get("dsn", "")),
                 connection_ref=connection_ref,
                 connect_timeout_seconds=int(entry.get("connect_timeout_seconds", 10)),

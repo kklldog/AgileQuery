@@ -32,3 +32,5 @@ frontend/.vite/
 # Local runtime data
 *.sqlite
 *.db
+data/connections.json
+data/llm_config.json
