@@ -5,106 +5,62 @@ from sqlglot.errors import ParseError
 from app.domain.errors import QueryValidationError
 from app.domain.models import RetrievedContext, ValidatedSql
 from app.integrations.llm_client import LLMClient, StubLLMClient
+from app.repositories.prompt_config import PROMPT_SQL_CORRECTION, PromptConfig
 from app.services.prompt_builder import PromptBuilder
-from app.services.sql_dialect import apply_limit, resolve_sqlglot_dialect
+from app.services.sql_dialect import apply_limit
 
 
 class SqlGenerationService:
-    def __init__(self, prompt_builder: PromptBuilder | None = None, llm_client: LLMClient | None = None) -> None:
+    def __init__(self, prompt_builder: PromptBuilder | None = None, llm_client: LLMClient | None = None, prompt_config: PromptConfig | None = None) -> None:
         self._prompt_builder = prompt_builder or PromptBuilder()
         self._llm_client = llm_client or StubLLMClient()
+        self._cfg = prompt_config or PromptConfig()
 
-    def generate_and_validate(self, question: str, context: RetrievedContext) -> ValidatedSql:
-        base_prompt = self._prompt_builder.build_sql_prompt(question, context)
+    def generate_and_validate(self, question: str, context: RetrievedContext, prompt_config: PromptConfig | None = None) -> ValidatedSql:
+        base_prompt = self._prompt_builder.build_sql_prompt(question, context, prompt_config=prompt_config)
         diagnostics = ["sql_prompt_built=true"]
 
-        last_error = None
-        for attempt in range(3):
-            if attempt > 0 and last_error:
-                correction_prompt = (
-                    f"{base_prompt}\n\n[Self-Correction]\n"
-                    f"Your previous SQL failed validation with this error:\n{last_error}\n"
-                    f"Please fix the SQL and return ONLY the corrected SQL statement."
-                )
-                llm_sql = self._llm_client.complete(correction_prompt).strip()
-            else:
-                llm_sql = self._llm_client.complete(base_prompt).strip()
+        llm_sql = self._llm_client.complete(base_prompt).strip()
+        sql = llm_sql or self._generate_sql(question, context)
+        generator = "llm_client" if llm_sql else "deterministic_stub"
+        diagnostics.append(f"sql_generated={generator}")
 
-            sql = llm_sql or self._generate_sql(question, context)
+        self._safety_check(sql)
+        diagnostics.append("sql_validated=safety_check_passed")
+        return ValidatedSql(sql=sql, diagnostics=diagnostics)
 
-            try:
-                self.validate_sql(sql, context)
-                generator = "llm_client" if llm_sql else "deterministic_stub"
-                diagnostics.append(f"sql_generated={generator}")
-                if attempt > 0:
-                    diagnostics.append(f"self_correction_attempts={attempt}")
-                diagnostics.append("sql_validated=parseable_select")
-                return ValidatedSql(sql=sql, diagnostics=diagnostics)
-            except QueryValidationError as exc:
-                last_error = str(exc)
-                if not llm_sql:
-                    raise
+    def generate_sql_raw(self, question: str, context: RetrievedContext, prompt_config: PromptConfig | None = None) -> tuple[str, list[str], str, str]:
+        base_prompt = self._prompt_builder.build_sql_prompt(question, context, prompt_config=prompt_config)
+        diagnostics = ["sql_prompt_built=true"]
+        llm_response = self._llm_client.complete(base_prompt).strip()
+        sql = llm_response or self._generate_sql(question, context)
+        generator = "llm_client" if llm_response else "deterministic_stub"
+        diagnostics.append(f"sql_generated={generator}")
+        return sql, diagnostics, base_prompt, llm_response
 
-        raise QueryValidationError(f"Failed to generate valid SQL after 3 attempts. Last error: {last_error}")
+    def correct_sql(self, original_prompt: str, sql: str, db_error: str, prompt_config: PromptConfig | None = None) -> tuple[str, str, str]:
+        cfg = prompt_config or self._cfg
+        template = cfg.get(PROMPT_SQL_CORRECTION)
+        correction_prompt = template.replace("{original_prompt}", original_prompt).replace("{sql}", sql).replace("{db_error}", db_error)
+        llm_response = self._llm_client.complete(correction_prompt).strip()
+        return llm_response, correction_prompt, llm_response
 
-    def validate_sql(self, sql: str, context: RetrievedContext) -> None:
-        if ";" in sql.strip().rstrip(";"):
+    def build_sql_prompt(self, question: str, context: RetrievedContext) -> str:
+        return self._prompt_builder.build_sql_prompt(question, context)
+
+    def safety_check(self, sql: str) -> None:
+        stripped = sql.strip().rstrip(";")
+        if ";" in stripped:
             raise QueryValidationError("Multiple SQL statements are not allowed")
-
-        sqlglot_dialect = resolve_sqlglot_dialect(context.database.dialect)
         try:
-            expression = sqlglot.parse_one(sql, read=sqlglot_dialect)
+            expression = sqlglot.parse_one(sql)
         except ParseError as exc:
             raise QueryValidationError(f"SQL parse failed: {exc}") from exc
-
         if not isinstance(expression, exp.Select):
             raise QueryValidationError("Only SELECT statements are allowed")
 
-        if list(expression.find_all(exp.Star)):
-            raise QueryValidationError("Star projections are not allowed")
-
-        allowed_tables = {table.name: table for table in context.tables}
-        alias_to_table: dict[str, str] = {}
-        for table_ref in expression.find_all(exp.Table):
-            table_name = table_ref.name
-            if table_name not in allowed_tables:
-                raise QueryValidationError(f"Unknown table in SQL: {table_name}")
-            alias = table_ref.alias_or_name
-            alias_to_table[alias] = table_name
-
-        if not alias_to_table:
-            raise QueryValidationError("SQL must reference at least one table")
-
-        multi_table_scope = len(alias_to_table) > 1 or len(context.tables) > 1
-        allowed_columns_by_table = {
-            table.name: {column.name for column in table.columns}
-            for table in context.tables
-        }
-
-        join_condition_columns = self._join_condition_columns(expression)
-
-        for column in expression.find_all(exp.Column):
-            column_name = column.name
-            qualifier = column.table
-
-            if qualifier:
-                if qualifier not in alias_to_table:
-                    raise QueryValidationError(f"Unknown table alias in SQL: {qualifier}")
-                if (qualifier, column_name) in join_condition_columns:
-                    continue
-                table_name = alias_to_table[qualifier]
-                if column_name not in allowed_columns_by_table[table_name]:
-                    raise QueryValidationError(f"Unknown column in SQL: {qualifier}.{column_name}")
-                continue
-
-            if multi_table_scope:
-                raise QueryValidationError(f"Unqualified column is not allowed in multi-table scope: {column_name}")
-
-            single_table_name = next(iter(alias_to_table.values()))
-            if column_name not in allowed_columns_by_table[single_table_name]:
-                raise QueryValidationError(f"Unknown column in SQL: {column_name}")
-
-        self._validate_join_conditions(expression, context, alias_to_table)
+    def _safety_check(self, sql: str) -> None:
+        self.safety_check(sql)
 
     def _generate_sql(self, question: str, context: RetrievedContext) -> str:
         join_sql = self._generate_join_sql(question, context)
@@ -182,41 +138,5 @@ class SqlGenerationService:
             )
         return None
 
-    def _validate_join_conditions(
-        self,
-        expression: exp.Select,
-        context: RetrievedContext,
-        alias_to_table: dict[str, str],
-    ) -> None:
-        joins = list(expression.find_all(exp.Join))
-        if len(alias_to_table) <= 1 and not joins:
-            return
 
-        for join in joins:
-            join_condition = join.args.get("on")
-            if join_condition is None:
-                raise QueryValidationError("JOIN must include an allowed ON condition")
-            condition_aliases = {
-                column.table
-                for column in join_condition.find_all(exp.Column)
-                if column.table
-            }
-            if len(condition_aliases) < 2:
-                raise QueryValidationError("JOIN condition must reference at least two table aliases")
-            unknown_aliases = condition_aliases - set(alias_to_table.keys())
-            if unknown_aliases:
-                unknown_alias = sorted(unknown_aliases)[0]
-                raise QueryValidationError(f"Unknown table alias in JOIN condition: {unknown_alias}")
 
-    def _join_condition_columns(self, expression: exp.Select) -> set[tuple[str, str]]:
-        columns: set[tuple[str, str]] = set()
-        for join in expression.find_all(exp.Join):
-            join_condition = join.args.get("on")
-            if join_condition is None:
-                continue
-            columns.update(
-                (column.table, column.name)
-                for column in join_condition.find_all(exp.Column)
-                if column.table
-            )
-        return columns

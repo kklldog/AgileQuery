@@ -21,6 +21,7 @@ import type {
 import type { DatabaseMeta } from '@/api/types'
 import DatabaseFormDialog from '@/components/DatabaseFormDialog.vue'
 import LlmConfigDialog from '@/components/LlmConfigDialog.vue'
+import PromptConfigDialog from '@/components/PromptConfigDialog.vue'
 
 const store = useDatabasesStore()
 const route = useRoute()
@@ -43,6 +44,9 @@ const llmDialogOpen = ref(false)
 const llmSubmitting = ref(false)
 const llmError = ref('')
 const llmConfig = ref<LlmConfig | null>(null)
+
+const promptDialogOpen = ref(false)
+const promptDatabaseId = ref('')
 
 onMounted(async () => {
   await store.refresh()
@@ -105,6 +109,11 @@ function openCreateDialog() {
   editingConnection.value = null
   dbError.value = ''
   dbDialogOpen.value = true
+}
+
+function openPromptDialog(databaseId: string) {
+  promptDatabaseId.value = databaseId
+  promptDialogOpen.value = true
 }
 
 async function onUpdateDatabase(databaseId: string, payload: UpdateDatabasePayload) {
@@ -232,6 +241,12 @@ function dialectIcon(dialect: string): string {
           <v-list-item-subtitle class="text-caption">{{ database.dialect }} · {{ database.spaces.length }} spaces</v-list-item-subtitle>
           <template #append>
             <v-btn
+              icon="mdi-text-box-edit-outline"
+              variant="text"
+              size="x-small"
+              @click.prevent.stop="openPromptDialog(database.id)"
+            />
+            <v-btn
               icon="mdi-pencil-outline"
               variant="text"
               size="x-small"
@@ -281,6 +296,8 @@ function dialectIcon(dialect: string): string {
       :current="llmConfig"
       @submit="onSaveLlmConfig"
     />
+
+    <PromptConfigDialog v-model="promptDialogOpen" :database-id="promptDatabaseId" />
 
     <v-dialog v-model="deleteConfirmOpen" max-width="360">
       <v-card rounded="xl">

@@ -11,6 +11,7 @@ from app.core.dependencies import (
     get_connections_repository,
     get_llm_config_repository,
     get_pipeline,
+    get_prompt_config_repository,
     get_settings,
 )
 from app.domain.errors import CatalogLookupError, QueryValidationError
@@ -23,6 +24,14 @@ from app.integrations.database_connectors import (
 from app.repositories.catalog import InMemoryCatalogRepository
 from app.repositories.connections import ConnectionConfig, ConnectionsFileRepository
 from app.repositories.llm_config import LlmConfig, LlmConfigFileRepository
+from app.repositories.prompt_config import (
+    ALL_PROMPT_KEYS,
+    DEFAULT_PROMPTS,
+    PROMPT_DESCRIPTIONS,
+    PROMPT_LABELS,
+    PromptConfig,
+    PromptConfigFileRepository,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 SPACE_ID_PATTERN = re.compile(r"^[a-z0-9_-]+$")
@@ -71,6 +80,7 @@ class AiFillColumnRequest(BaseModel):
 class AiFillTableMetaRequest(BaseModel):
     table_name: str
     columns: list[AiFillColumnRequest] = []
+    database_id: str = ""
 
 
 @router.post("/ai/fill-table-meta")
@@ -82,20 +92,12 @@ def ai_fill_table_meta(
         f"  - {c.name} ({c.data_type})" if c.data_type else f"  - {c.name}"
         for c in request.columns
     )
-    prompt = f"""你是数据库元数据专家。根据以下表名和列信息，用中文生成业务友好的元数据描述，以 JSON 格式输出。
-
-表名: {request.table_name}
-列信息:
-{cols_desc}
-
-请以以下 JSON 格式输出（不要输出任何其他内容）：
-{{
-  "business_name": "表的中文业务名称",
-  "description": "表的业务用途描述（1-2句话）",
-  "columns": [
-    {{"name": "列名", "description": "列的业务含义描述"}}
-  ]
-}}"""
+    if request.database_id:
+        prompt_template = get_prompt_config_repository(request.database_id).get().get("ai_fill_table")
+    else:
+        from app.repositories.prompt_config import DEFAULT_PROMPTS
+        prompt_template = DEFAULT_PROMPTS["ai_fill_table"]
+    prompt = prompt_template.replace("{table_name}", request.table_name).replace("{cols_desc}", cols_desc)
 
     try:
         llm = build_llm_client(settings)
@@ -118,10 +120,12 @@ class _TableSummary(BaseModel):
 
 class AiFillJoinsRequest(BaseModel):
     tables: list[_TableSummary] = []
+    database_id: str = ""
 
 
 class AiFillMetricsRequest(BaseModel):
     tables: list[_TableSummary] = []
+    database_id: str = ""
 
 
 @router.post("/ai/fill-joins")
@@ -133,17 +137,11 @@ def ai_fill_joins(
         f"- {t.name}({', '.join(c.name + (':' + c.data_type if c.data_type else '') for c in t.columns)})"
         for t in request.tables
     )
-    prompt = f"""你是数据库设计专家。根据以下表结构，用自然语言描述这些表之间可能的关联关系（JOIN 关系），供 AI 生成 SQL 时参考。
-每行描述一个关联关系，语言简洁、清晰。只输出文本内容，不要输出 JSON 或 Markdown。
-
-表结构:
-{tables_desc}
-
-示例输出格式:
-orders 通过 customer_id 关联 customers
-order_items 通过 order_id 关联 orders
-
-请直接输出关联关系描述:"""
+    if request.database_id:
+        prompt = get_prompt_config_repository(request.database_id).get().get("ai_fill_joins").replace("{tables_desc}", tables_desc)
+    else:
+        from app.repositories.prompt_config import DEFAULT_PROMPTS
+        prompt = DEFAULT_PROMPTS["ai_fill_joins"].replace("{tables_desc}", tables_desc)
 
     try:
         llm = build_llm_client(settings)
@@ -162,17 +160,11 @@ def ai_fill_metrics(
         f"- {t.name}({', '.join(c.name + (':' + c.data_type if c.data_type else '') for c in t.columns)})"
         for t in request.tables
     )
-    prompt = f"""你是业务数据分析专家。根据以下表结构，用自然语言描述常见业务指标的计算口径，供 AI 生成 SQL 时参考。
-每行描述一个业务指标，语言简洁、清晰。只输出文本内容，不要输出 JSON 或 Markdown。
-
-表结构:
-{tables_desc}
-
-示例输出格式:
-总销售额 = SUM(amount)，仅统计 status='paid' 的订单
-客单价 = 总销售额 / 下单客户数
-
-请直接输出业务指标描述:"""
+    if request.database_id:
+        prompt = get_prompt_config_repository(request.database_id).get().get("ai_fill_metrics").replace("{tables_desc}", tables_desc)
+    else:
+        from app.repositories.prompt_config import DEFAULT_PROMPTS
+        prompt = DEFAULT_PROMPTS["ai_fill_metrics"].replace("{tables_desc}", tables_desc)
 
     try:
         llm = build_llm_client(settings)
@@ -227,6 +219,8 @@ class CreateSpaceRequest(BaseModel):
     tables: list[TableMetaRequest] = []
     join_rules: list[JoinRuleMetaRequest] = []
     metric_rules: list[MetricRuleMetaRequest] = []
+    joins_text: str = ""
+    metrics_text: str = ""
 
     @field_validator("id")
     @classmethod
@@ -242,6 +236,8 @@ class UpdateSpaceRequest(BaseModel):
     tables: list[TableMetaRequest] | None = None
     join_rules: list[JoinRuleMetaRequest] | None = None
     metric_rules: list[MetricRuleMetaRequest] | None = None
+    joins_text: str | None = None
+    metrics_text: str | None = None
 
 
 class CreateDatabaseRequest(BaseModel):
@@ -564,6 +560,8 @@ def create_space(
             tables=[_to_table_meta(t) for t in request.tables],
             join_rules=[_to_join_rule(j) for j in request.join_rules],
             metric_rules=[_to_metric_rule(m) for m in request.metric_rules],
+            joins_text=request.joins_text,
+            metrics_text=request.metrics_text,
         )
         catalog.add_space(database_id, space)
         return {"space": space}
@@ -613,6 +611,8 @@ def update_space(
         and request.tables is None
         and request.join_rules is None
         and request.metric_rules is None
+        and request.joins_text is None
+        and request.metrics_text is None
     ):
         raise HTTPException(status_code=422, detail="At least one field must be provided")
     try:
@@ -624,6 +624,8 @@ def update_space(
             tables=[_to_table_meta(t) for t in request.tables] if request.tables is not None else None,
             join_rules=[_to_join_rule(j) for j in request.join_rules] if request.join_rules is not None else None,
             metric_rules=[_to_metric_rule(m) for m in request.metric_rules] if request.metric_rules is not None else None,
+            joins_text=request.joins_text,
+            metrics_text=request.metrics_text,
         )
         return {"space": space}
     except CatalogLookupError as exc:
@@ -652,7 +654,7 @@ class UpdateLlmConfigRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, value: str) -> str:
-        allowed = {"stub", "openai", "openai-compatible"}
+        allowed = {"stub", "openai", "openai-compatible", "deepseek"}
         if value.lower() not in allowed:
             raise ValueError(f"Unsupported provider: {value}. Allowed: {', '.join(sorted(allowed))}")
         return value.lower()
@@ -701,5 +703,44 @@ def update_llm_config(
         }
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/databases/{database_id}/prompts")
+def get_database_prompts(database_id: str):
+    repo = get_prompt_config_repository(database_id)
+    cfg = repo.get()
+    return {
+        key: {
+            "value": cfg.get(key),
+            "label": PROMPT_LABELS[key],
+            "description": PROMPT_DESCRIPTIONS[key],
+            "is_default": key not in cfg.prompts,
+        }
+        for key in ALL_PROMPT_KEYS
+    }
+
+
+class UpdatePromptsRequest(BaseModel):
+    prompts: dict[str, str]
+
+
+@router.put("/databases/{database_id}/prompts")
+def update_database_prompts(database_id: str, request: UpdatePromptsRequest):
+    try:
+        repo = get_prompt_config_repository(database_id)
+        repo.update(request.prompts)
+        get_pipeline.cache_clear()
+        cfg = repo.get()
+        return {
+            key: {
+                "value": cfg.get(key),
+                "label": PROMPT_LABELS[key],
+                "description": PROMPT_DESCRIPTIONS[key],
+                "is_default": key not in cfg.prompts,
+            }
+            for key in ALL_PROMPT_KEYS
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

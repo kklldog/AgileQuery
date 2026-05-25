@@ -7,6 +7,7 @@ from app.integrations.llm_client import LLMClient, OpenAICompatibleLLMClient, St
 from app.repositories.catalog import InMemoryCatalogRepository, JsonFileCatalogRepository
 from app.repositories.connections import ConnectionsFileRepository
 from app.repositories.llm_config import LlmConfig, LlmConfigFileRepository
+from app.repositories.prompt_config import PromptConfigFileRepository
 from app.services.phase1_retrieval import RetrievalService
 from app.services.phase2_sql import SqlGenerationService
 from app.services.phase3_execution import QueryExecutionService
@@ -70,7 +71,7 @@ def build_llm_client(settings: Settings) -> LLMClient:
     provider = cfg.provider.lower()
     if provider == "stub":
         return StubLLMClient()
-    if provider in {"openai", "openai-compatible"}:
+    if provider in {"openai", "openai-compatible", "deepseek"}:
         return OpenAICompatibleLLMClient(
             base_url=cfg.base_url,
             api_key=cfg.api_key,
@@ -80,7 +81,10 @@ def build_llm_client(settings: Settings) -> LLMClient:
     raise QueryValidationError(f"Unsupported LLM provider: {cfg.provider}")
 
 
-@lru_cache
+def get_prompt_config_repository(database_id: str) -> PromptConfigFileRepository:
+    return PromptConfigFileRepository(data_dir="data", database_id=database_id)
+
+
 def get_pipeline() -> QueryPipeline:
     settings: Settings = get_settings()
     catalog = get_catalog_repository()
@@ -96,4 +100,5 @@ def get_pipeline() -> QueryPipeline:
         ),
         insight_service=InsightService(prompt_builder=prompt_builder, llm_client=llm_client),
         default_max_rows=settings.default_max_rows,
+        prompts_data_dir="data",
     )

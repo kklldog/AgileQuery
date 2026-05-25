@@ -42,6 +42,8 @@ export interface SpaceMeta {
   tables: TableMeta[]
   join_rules: JoinRuleMeta[]
   metric_rules: MetricRuleMeta[]
+  joins_text: string
+  metrics_text: string
 }
 
 export interface DatabaseMeta {
@@ -51,6 +53,12 @@ export interface DatabaseMeta {
   description: string
   connection_ref: string
   spaces: SpaceMeta[]
+}
+
+export interface LLMTrace {
+  stage: string
+  prompt: string
+  response: string
 }
 
 export interface QueryResponse {
@@ -63,4 +71,14 @@ export interface QueryResponse {
   row_count: number
   is_truncated: boolean
   diagnostics: string[]
+  llm_traces: LLMTrace[]
 }
+
+export interface PromptEntry {
+  value: string
+  label: string
+  description: string
+  is_default: boolean
+}
+
+export type PromptsConfig = Record<string, PromptEntry>

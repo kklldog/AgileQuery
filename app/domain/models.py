@@ -49,6 +49,8 @@ class SpaceMeta:
     tables: list[TableMeta] = field(default_factory=list)
     join_rules: list[JoinRuleMeta] = field(default_factory=list)
     metric_rules: list[MetricRuleMeta] = field(default_factory=list)
+    joins_text: str = ""
+    metrics_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,8 @@ class RetrievedContext:
     join_rules: list[JoinRuleMeta] = field(default_factory=list)
     metric_rules: list[MetricRuleMeta] = field(default_factory=list)
     diagnostics: list[str] = field(default_factory=list)
+    llm_keyword_prompt: str = ""
+    llm_keyword_response: str = ""
 
 
 @dataclass(frozen=True)

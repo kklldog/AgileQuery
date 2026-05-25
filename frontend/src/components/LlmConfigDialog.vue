@@ -27,8 +27,24 @@ const timeoutValue = ref(30)
 const showKey = ref(false)
 
 const isOpenAI = computed(() =>
-  providerValue.value === 'openai' || providerValue.value === 'openai-compatible',
+  ['openai', 'openai-compatible', 'deepseek'].includes(providerValue.value),
 )
+
+const baseUrlPlaceholder = computed(() => {
+  if (providerValue.value === 'deepseek') return 'https://api.deepseek.com/v1'
+  return 'https://api.openai.com/v1'
+})
+
+const modelPlaceholder = computed(() => {
+  if (providerValue.value === 'deepseek') return 'deepseek-chat'
+  return 'gpt-4o'
+})
+
+watch(providerValue, (val) => {
+  if (val === 'deepseek' && !baseUrlValue.value) {
+    baseUrlValue.value = 'https://api.deepseek.com/v1'
+  }
+})
 
 watch(
   () => props.modelValue,
@@ -98,6 +114,7 @@ function handleSubmit() {
           prepend-inner-icon="mdi-cloud-outline"
           :items="[
             { title: 'OpenAI Compatible（推荐）', value: 'openai-compatible' },
+            { title: 'DeepSeek', value: 'deepseek' },
             { title: 'OpenAI', value: 'openai' },
             { title: 'Stub（禁用 LLM）', value: 'stub' },
           ]"
@@ -108,7 +125,7 @@ function handleSubmit() {
           <v-text-field
             v-model="baseUrlValue"
             label="Base URL"
-            placeholder="https://api.openai.com/v1"
+            :placeholder="baseUrlPlaceholder"
             variant="outlined"
             density="comfortable"
             prepend-inner-icon="mdi-link"
@@ -131,7 +148,7 @@ function handleSubmit() {
           <v-text-field
             v-model="modelValue"
             label="模型名称"
-            placeholder="gpt-4o"
+            :placeholder="modelPlaceholder"
             variant="outlined"
             density="comfortable"
             prepend-inner-icon="mdi-chip"

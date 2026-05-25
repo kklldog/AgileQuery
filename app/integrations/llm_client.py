@@ -62,6 +62,8 @@ class OpenAICompatibleLLMClient:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8")
             raise QueryValidationError(f"LLM provider HTTP error: {exc.code} {detail}") from exc
+        except TimeoutError as exc:
+            raise QueryValidationError(f"LLM provider timed out after {self.timeout_seconds}s") from exc
         except URLError as exc:
             raise QueryValidationError(f"LLM provider request failed: {exc.reason}") from exc
 

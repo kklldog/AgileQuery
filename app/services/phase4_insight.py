@@ -1,5 +1,6 @@
 from app.domain.models import ExecutionResult, InsightResult
 from app.integrations.llm_client import LLMClient, StubLLMClient
+from app.repositories.prompt_config import PromptConfig
 from app.services.prompt_builder import PromptBuilder
 
 
@@ -8,14 +9,14 @@ class InsightService:
         self._prompt_builder = prompt_builder or PromptBuilder()
         self._llm_client = llm_client or StubLLMClient()
 
-    def build_insight(self, execution_result: ExecutionResult) -> InsightResult:
-        prompt = self._prompt_builder.build_insight_prompt(execution_result)
-        llm_summary = self._llm_client.complete(prompt).strip()
-        summary = llm_summary or self._build_summary(execution_result)
+    def build_insight(self, execution_result: ExecutionResult, prompt_config: PromptConfig | None = None) -> tuple[InsightResult, str, str]:
+        prompt = self._prompt_builder.build_insight_prompt(execution_result, prompt_config=prompt_config)
+        llm_response = self._llm_client.complete(prompt).strip()
+        summary = llm_response or self._build_summary(execution_result)
         table_markdown = self._to_markdown(execution_result)
         diagnostics = ["insight_prompt_built=true"]
-        diagnostics.append("insight_generated=llm_client" if llm_summary else "insight_generated=deterministic_stub")
-        return InsightResult(summary=summary, table_markdown=table_markdown, diagnostics=diagnostics)
+        diagnostics.append("insight_generated=llm_client" if llm_response else "insight_generated=deterministic_stub")
+        return InsightResult(summary=summary, table_markdown=table_markdown, diagnostics=diagnostics), prompt, llm_response
 
     def _build_summary(self, result: ExecutionResult) -> str:
         if result.status == "empty":

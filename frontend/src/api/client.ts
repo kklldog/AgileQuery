@@ -1,4 +1,4 @@
-import type { DatabaseMeta, QueryResponse, SpaceMeta } from './types'
+import type { DatabaseMeta, PromptsConfig, QueryResponse, SpaceMeta } from './types'
 
 export const API_BASE_URL = 'http://localhost:8000'
 export const SPACE_ID_PATTERN = /^[a-z0-9_-]+$/
@@ -162,7 +162,7 @@ export async function getSpace(databaseId: string, spaceId: string): Promise<Spa
 
 export async function createSpace(
   databaseId: string,
-  payload: Pick<SpaceMeta, 'id' | 'name' | 'description' | 'tables' | 'join_rules' | 'metric_rules'>,
+  payload: Pick<SpaceMeta, 'id' | 'name' | 'description' | 'tables' | 'join_rules' | 'metric_rules' | 'joins_text' | 'metrics_text'>,
 ): Promise<SpaceMeta> {
   const data = await request<{ space: SpaceMeta }>(
     `/admin/databases/${databaseId}/spaces`,
@@ -175,7 +175,7 @@ export async function createSpace(
 export async function updateSpace(
   databaseId: string,
   spaceId: string,
-  payload: Partial<Pick<SpaceMeta, 'name' | 'description' | 'tables' | 'join_rules' | 'metric_rules' | 'sample_questions'>>,
+  payload: Partial<Pick<SpaceMeta, 'name' | 'description' | 'tables' | 'join_rules' | 'metric_rules' | 'sample_questions' | 'joins_text' | 'metrics_text'>>,
 ): Promise<SpaceMeta> {
   const data = await request<{ space: SpaceMeta }>(
     `/admin/databases/${databaseId}/spaces/${spaceId}`,
@@ -261,6 +261,18 @@ export async function updateLlmConfig(payload: UpdateLlmConfigPayload): Promise<
     '/admin/llm-config',
     { method: 'PUT', body: JSON.stringify(payload) },
     'Failed to update LLM config',
+  )
+}
+
+export async function getDatabasePrompts(databaseId: string): Promise<PromptsConfig> {
+  return request<PromptsConfig>(`/admin/databases/${databaseId}/prompts`, undefined, 'Failed to fetch prompts')
+}
+
+export async function updateDatabasePrompts(databaseId: string, prompts: Record<string, string>): Promise<PromptsConfig> {
+  return request<PromptsConfig>(
+    `/admin/databases/${databaseId}/prompts`,
+    { method: 'PUT', body: JSON.stringify({ prompts }) },
+    'Failed to update prompts',
   )
 }
 

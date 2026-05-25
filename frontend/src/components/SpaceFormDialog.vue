@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { SPACE_ID_PATTERN, aiFillTableMeta, aiFillJoins, aiFillMetrics } from '@/api/client'
-import type { SpaceMeta, TableMeta, ColumnMeta, JoinRuleMeta, MetricRuleMeta } from '@/api/types'
+import type { SpaceMeta, TableMeta, ColumnMeta } from '@/api/types'
 import type { IntrospectedObject } from '@/api/client'
 import ImportTablesDialog from '@/components/ImportTablesDialog.vue'
 import { getErrorMessage } from '@/api/client'
@@ -72,12 +72,8 @@ watch(
     }))
     tableCollapsed.value = tablesValue.value.map(() => false)
     tableAiLoading.value = tablesValue.value.map(() => false)
-    joinsText.value = (initial?.join_rules ?? []).length
-      ? JSON.stringify(initial!.join_rules, null, 2)
-      : ''
-    metricsText.value = (initial?.metric_rules ?? []).length
-      ? JSON.stringify(initial!.metric_rules, null, 2)
-      : ''
+    joinsText.value = initial?.joins_text ?? ''
+    metricsText.value = initial?.metrics_text ?? ''
   },
   { immediate: true },
 )
@@ -151,17 +147,6 @@ function removeColumn(tableIdx: number, colIdx: number) {
   tablesValue.value[tableIdx].columns.splice(colIdx, 1)
 }
 
-function tryParseJson<T>(src: string): T[] {
-  const s = src.trim()
-  if (!s || s === '[]') return []
-  try {
-    const parsed = JSON.parse(s) as unknown
-    return Array.isArray(parsed) ? (parsed as T[]) : []
-  } catch {
-    return []
-  }
-}
-
 async function aiFillTable(ti: number) {
   const table = tablesValue.value[ti]
   tableAiLoading.value[ti] = true
@@ -178,7 +163,13 @@ async function aiFillTable(ti: number) {
         if (match?.description) col.description = match.description
       }
       tableCollapsed.value[ti] = false
+    } else if (!result.ok) {
+      aiErrorMessage.value = result.message ?? 'AI 生成失败'
+      aiErrorSnackbar.value = true
     }
+  } catch (e) {
+    aiErrorMessage.value = getErrorMessage(e)
+    aiErrorSnackbar.value = true
   } finally {
     tableAiLoading.value[ti] = false
   }
@@ -229,9 +220,6 @@ async function aiFillMetricsText() {
 function handleSubmit() {
   if (!canSubmit.value) return
 
-  const joinsList = tryParseJson<JoinRuleMeta>(joinsText.value)
-  const metricsList = tryParseJson<MetricRuleMeta>(metricsText.value)
-
   const tables: TableMeta[] = tablesValue.value
     .filter(t => t.name.trim())
     .map(t => ({
@@ -254,8 +242,10 @@ function handleSubmit() {
     description: descriptionValue.value.trim(),
     sample_questions: sampleQuestionsText.value.split('\n').map(s => s.trim()).filter(Boolean),
     tables,
-    join_rules: joinsList,
-    metric_rules: metricsList,
+    join_rules: [],
+    metric_rules: [],
+    joins_text: joinsText.value,
+    metrics_text: metricsText.value,
   })
 }
 </script>

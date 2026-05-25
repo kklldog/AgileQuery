@@ -89,7 +89,9 @@
               "订单金额"
             ]
           }
-        ]
+        ],
+        "joins_text": "",
+        "metrics_text": ""
       }
     ]
   },
@@ -702,10 +704,60 @@
                 "description": "销售状态，表示客房当前是否可对外销售或销售控制情况。"
               }
             ]
+          },
+          {
+            "name": "RoomType",
+            "business_name": "房型信息表",
+            "description": "该表用于维护酒店的房型基础信息，包括房型名称、价格、简称及展示说明等内容。通常用于酒店房型管理、房价展示和预订业务处理中。",
+            "alias": "ro",
+            "columns": [
+              {
+                "name": "Id",
+                "data_type": "uniqueidentifier",
+                "description": "房型记录的唯一标识，用于唯一识别一条房型信息。"
+              },
+              {
+                "name": "HotelCode",
+                "data_type": "int",
+                "description": "所属酒店编码，用于标识该房型归属的具体酒店。"
+              },
+              {
+                "name": "TypeName",
+                "data_type": "nvarchar",
+                "description": "房型名称，如标准间、豪华大床房等，用于业务展示和识别。"
+              },
+              {
+                "name": "Price",
+                "data_type": "int",
+                "description": "房型价格，表示该房型的基础售价或参考价格。"
+              },
+              {
+                "name": "ShortName",
+                "data_type": "nvarchar",
+                "description": "房型简称，用于页面展示、列表显示或内部快速识别。"
+              },
+              {
+                "name": "OverRoomNumber",
+                "data_type": "int",
+                "description": "超额房间数量，表示该房型可超售或额外可分配的房间数。"
+              },
+              {
+                "name": "EnglishName",
+                "data_type": "nvarchar",
+                "description": "房型英文名称，用于英文界面展示或国际化业务场景。"
+              },
+              {
+                "name": "ShortInfo",
+                "data_type": "nvarchar",
+                "description": "房型简要说明，用于描述房型特点、卖点或补充展示信息。"
+              }
+            ]
           }
         ],
         "join_rules": [],
-        "metric_rules": []
+        "metric_rules": [],
+        "joins_text": "Order 通过 PreOrderId 关联 PreOrder 的 Id\nOrder 通过 PreOrderNo 关联 OnlinePreorder 的 PreOrderNo\nOrder 通过 HotelCode 关联 OnlinePreorder 的 HotelCode，可与 PreOrderNo 一起作为更稳妥的联合条件\nPreOrder 通过 OrderNo 关联 Order 的 OrderNo\nOnlinePreorder 通过 PreOrderNo 关联 Order 的 PreOrderNo\nOnlinePreorder 通过 HotelCode 关联 Order 的 HotelCode，可与 PreOrderNo 一起作为更稳妥的联合条件\nOrder 通过 RoomType 关联 RoomType 的 Id\nPreOrder 通过 RoomType 关联 RoomType 的 Id\nOnlinePreorder 通过 RoomType 关联 RoomType 的 Id\nRoom 通过 RoomTypeId 关联 RoomType 的 Id\nOrder 通过 RoomId 关联 Room 的 Id\nOrder 通过 RoomNo 关联 Room 的 RoomNo，通常还应同时按 HotelCode 匹配\nPreOrder 通过 RoomNo 关联 Room 的 RoomNo，通常还应同时按 HotelCode 匹配\nOrder 通过 HotelCode 关联 Room 的 HotelCode\nPreOrder 通过 HotelCode 关联 Room 的 HotelCode\nOnlinePreorder 通过 HotelCode 关联 RoomType 的 HotelCode\nPreOrder 通过 HotelCode 关联 RoomType 的 HotelCode\nOrder 通过 HotelCode 关联 RoomType 的 HotelCode\nRoom 通过 HotelCode 关联 RoomType 的 HotelCode\nOnlinePreorder 通过 MemberId 可能关联 Order 的 BookerMemberId 或 MainCustomerId\nOrder 通过 UnionId 关联同表其他 Order 的 Id，可用于查询联房或主从房关系",
+        "metrics_text": "预订单数 = COUNT(PreOrder.Id)，统计指定时间范围内创建的预订单，一般按 PreOrder.CreateTime 过滤，可按酒店、渠道、房型分组\n在线预订单数 = COUNT(OnlinePreorder.Id)，统计指定时间范围内创建的在线预订记录，一般按 OnlinePreorder.CreateTime 过滤\n入住订单数 = COUNT(Order.Id)，统计实际生成的入住订单，一般按 Order.CreateTime、Order.StayTime 或 Order.FinanceDate 过滤，需排除虚拟单 IsVirtual=1\n预订间夜数 = SUM(PreOrder.RoomCount * PreOrder.StayDays)，统计预订单预订的总间夜\n在线预订间夜数 = SUM(OnlinePreorder.RoomCount * OnlinePreorder.StayDays)，统计在线预订的总间夜\n入住间夜数 = SUM(Order.StayDays)，按订单统计实际入住间夜，通常一条订单对应一间房\n预订房间数 = SUM(PreOrder.RoomCount)，统计预订单中的预订房数\n入住房间数 = COUNT(Order.Id)，统计实际入住的房间数，通常按订单粒度计算\n取消预订单数 = COUNT(PreOrder.Id)，仅统计 PreOrder.Status 为已取消的记录\n在线取消预订单数 = COUNT(OnlinePreorder.Id)，仅统计 OnlinePreorder.Status 为已取消的记录\n取消率 = 取消预订单数 / 预订单数，分母为全部预订单，分子为已取消预订单\n在线预订取消率 = 在线取消预订单数 / 在线预订单数\n预订转入住率 = 关联生成入住订单的预订单数 / 预订单数，可通过 Order.PreOrderId = PreOrder.Id 或 Order.PreOrderNo = OnlinePreorder.PreOrderNo 判断是否转入住\n在线预订转入住率 = 由在线预订单转成入住订单的数量 / 在线预订单数量，可通过 Order.PreOrderNo = OnlinePreorder.PreOrderNo 关联\n总房费 = SUM(Order.FinalPrice)，统计实际入住订单的最终房费金额，通常排除已取消、无效订单和虚拟单\n门市房费 = SUM(Order.RoomPrice * Order.StayDays)，按订单门市价计算的理论房费金额\n折后房费 = SUM(OnlinePreorder.DiscountPrice * OnlinePreorder.RoomCount * OnlinePreorder.StayDays)，统计在线预订按折后价计算的预订金额\n在线预订总金额 = SUM(OnlinePreorder.TotalPrice)，统计在线预订单总价\n预订金额 = SUM(PreOrder.Price * PreOrder.RoomCount * PreOrder.StayDays)，按预订单单价、房数和天数计算预订金额\n已支付在线预订金额 = SUM(OnlinePreorder.TotalPrice)，仅统计 PaymentTime 不为空或 Status 为已支付/已确认的在线预订单\n已支付订单数 = COUNT(OnlinePreorder.Id 或 Order.Id)，仅统计存在 PaymentTime 或支付状态有效的记录\n平均房价ADR = 总房费 / 入住房间数，分母为实际入住房间数或已售房晚数，需根据报表口径统一\n每间夜平均房价 = 总房费 / 入住间夜数，用实际发生的房费除以实际入住间夜\n平均预订房价 = 预订金额 / 预订间夜数，反映预订阶段的单间夜均价\nRevPAR = 总房费 / 可售房间数，通常按日期统计；可售房间数一般为在营房间数乘以天数\n出租率 = 已售房间数 / 可售房间数，已售房间数通常取实际入住房间数，可售房间数来自 Room 表中可销售房间\n间夜出租率 = 入住间夜数 / 可售间夜数，可售间夜数 = 可销售房间数 * 统计天数\n可售房间数 = COUNT(Room.Id)，统计指定酒店下可销售的房间，通常仅统计 SellStatus 为可售的房间\n在营房间数 = COUNT(Room.Id)，按酒店统计当前在营房间数量，可按 SellStatus 或 Status 过滤停用、维修房\n房型房间数 = COUNT(Room.Id)，按 Room.RoomTypeId 分组统计各房型房间数量\n房型入住订单数 = COUNT(Order.Id)，按 Order.RoomType 分组统计各房型实际入住订单数\n房型入住间夜数 = SUM(Order.StayDays)，按 Order.RoomType 分组统计各房型入住间夜\n房型房费收入 = SUM(Order.FinalPrice)，按 Order.RoomType 分组统计各房型房费收入\n渠道预订单数 = COUNT(PreOrder.Id)，按 PreOrder.Channel 分组统计各渠道预订量\n渠道入住订单数 = COUNT(Order.Id)，按 Order.Channel 分组统计各渠道入住量\n渠道房费收入 = SUM(Order.FinalPrice)，按 Order.Channel 分组统计各渠道房费收入\nOTA预订单数 = COUNT(PreOrder.Id)，仅统计 OtaNo 不为空或 Channel 为 OTA 的预订单\nOTA入住订单数 = COUNT(Order.Id)，仅统计 OtaNo 不为空或 Channel 为 OTA 的入住订单\nOTA间夜数 = SUM(Order.StayDays)，仅统计 OTA 渠道入住订单\nOTA收入 = SUM(Order.FinalPrice)，仅统计 OTA 渠道实际房费收入\n会员预订单数 = COUNT(PreOrder.Id)，仅统计 CustomerId 不为空的预订单\n会员入住订单数 = COUNT(Order.Id)，仅统计 BookerMemberId 或 MainCustomerId 不为空的入住订单\n会员收入 = SUM(Order.FinalPrice)，仅统计会员相关入住订单的房费收入\n会员占比 = 会员入住订单数 / 入住订单数，或会员收入 / 总收入，需明确分子分母口径\n散客订单数 = COUNT(Order.Id)，仅统计 CustomerType 为散客的订单\n协议单位订单数 = COUNT(Order.Id)，仅统计 ContractUnit 不为空的订单\n协议单位收入 = SUM(Order.FinalPrice)，仅统计 ContractUnit 不为空的订单收入\n自来客订单数 = COUNT(Order.Id)，按渠道或来源字段识别门店直客后统计订单数\n直销订单数 = COUNT(Order.Id 或 PreOrder.Id)，仅统计酒店自有渠道下单的记录，如前台、电话、官网、小程序等，具体按 Channel 或 AddFrom 定义\n新增预订客户数 = COUNT(DISTINCT PreOrder.BookerTel 或 PreOrder.CustomerId)，按下单手机号或客户标识去重统计\n入住客户数 = COUNT(DISTINCT Order.MainCustomerId 或 Order.BookerTel)，按客户标识去重统计实际到店客户人数\n客单价 = 总房费 / 入住客户数，按客户去重口径计算人均消费\n订单均价 = 总房费 / 入住订单数，按订单粒度计算平均每单收入\n每房收入 = 总房费 / 入住房间数，按实际售出房间计算平均每房收入\n连住订单数 = COUNT(Order.Id)，仅统计 StayDays > 1 的订单\n连住间夜数 = SUM(Order.StayDays)，仅统计 StayDays > 1 的订单\n连住占比 = 连住订单数 / 入住订单数，或连住间夜数 / 入住间夜数，需统一口径\n当日到店订单数 = COUNT(Order.Id)，统计 StayTime 在指定日期的订单\n当日离店订单数 = COUNT(Order.Id)，统计 CheckOutTime 或 LeaveTime 在指定日期的订单\n在住订单数 = COUNT(Order.Id)，统计指定时点已经入住且未退房的订单，通常满足 StayTime <= 时点 且 CheckOutTime 为空或 CheckOutTime > 时点\n预抵订单数 = COUNT(PreOrder.Id)，统计 ArriveTime 为指定日期且尚未转入住、未取消的预订单\n预离订单数 = COUNT(Order.Id)，统计 LeaveTime 为指定日期且尚未退房或计划离店的订单\nNoShow预订单数 = COUNT(PreOrder.Id 或 OnlinePreorder.Id)，统计预订后未入住且最终失效的记录，具体根据 Status 定义\nNoShow率 = NoShow预订单数 / 预订单数\n提前预订天数 = DATEDIFF(day, PreOrder.CreateTime, PreOrder.ArriveTime) 的平均值，统计客户平均提前多久下单\n平均入住时长 = SUM(Order.StayDays) / 入住订单数，反映平均每单入住天数\n平均预订时长 = SUM(PreOrder.StayDays * PreOrder.RoomCount) / 预订房间数，或 SUM(PreOrder.StayDays) / 预订单数，需明确按房还是按单计算\n支付订单数 = COUNT(OnlinePreorder.Id)，统计 PaymentTime 不为空的在线预订单\n支付转化率 = 支付订单数 / 在线预订单数\n预付金额 = SUM(PreOrder.OTAPrepayAmount)，统计 OTA 预付金额合计\n预付订单数 = COUNT(PreOrder.Id)，仅统计 OTAPrepayAmount > 0 的预订单\n积分使用订单数 = COUNT(Order.Id)，仅统计 IsUsePoint = 1 的入住订单\n含早订单数 = COUNT(Order.Id)，仅统计 IncludeBreakfast = 1 的订单\n主房订单数 = COUNT(Order.Id)，仅统计 IsMainRoom = 1 的订单，适用于联房场景\n联房订单数 = COUNT(DISTINCT Order.UnionId)，仅统计 UnionId 不为空的联房入住单组数\n线上预订均价 = SUM(OnlinePreorder.TotalPrice) / SUM(OnlinePreorder.RoomCount * OnlinePreorder.StayDays)，按在线预订总金额除以在线预订间夜\n房型预订均价 = SUM(PreOrder.Price * PreOrder.RoomCount * PreOrder.StayDays) / SUM(PreOrder.RoomCount * PreOrder.StayDays)，按房型分组统计\n入住率按财务日 = COUNT(Order.Id) 或 SUM(Order.StayDays) 的财务日口径统计，统一按 Order.FinanceDate 过滤和汇总\n预订量按财务日 = COUNT(PreOrder.Id)，统一按 PreOrder.FinanceDate 过滤和汇总\n订单来源分布 = 按 AddFrom、Channel、PaymentWay 或 SellType 分组统计订单数和金额，占比用各组值 / 总值\n支付方式订单数 = COUNT(Order.Id 或 OnlinePreorder.Id)，按 PaymentWay 分组统计订单量\n支付方式收入 = SUM(Order.FinalPrice 或 OnlinePreorder.TotalPrice)，按 PaymentWay 分组统计金额\n日均收入 = 总房费 / 统计天数，按自然日或财务日计算\n日均售房间数 = 入住房间数 / 统计天数\n日均间夜数 = 入住间夜数 / 统计天数\n品牌预订量 = COUNT(OnlinePreorder.Id)，按 Brand 分组统计在线预订数量\n品牌预订金额 = SUM(OnlinePreorder.TotalPrice)，按 Brand 分组统计在线预订金额\n超时未到店预订单数 = COUNT(OnlinePreorder.Id 或 PreOrder.Id)，统计 OverTime 已过且未转入住、未取消的预订单\n保留房超时率 = 超时未到店预订单数 / 预订单数，适用于有保留时间 KeepTime、OverTime 的场景\n入住转化时长 = Order.CreateTime 与对应 PreOrder.CreateTime 或 OnlinePreorder.CreateTime 的时间差平均值，反映预订到入住转化速度\n客户复购率 = 在统计期内二次及以上入住的客户数 / 入住客户数，客户可按 MainCustomerId、BookerMemberId 或手机号识别\n新客数 = 首次发生预订或入住的客户数，按客户标识在全量历史中判断首次时间\n老客数 = 非首次发生预订或入住的客户数\n新客收入 = SUM(Order.FinalPrice)，仅统计首次入住客户贡献的收入\n老客收入 = SUM(Order.FinalPrice)，仅统计老客户贡献的收入\n房型可售间夜数 = 对每个房型统计可销售房间数 * 统计天数\n房型出租率 = 房型入住间夜数 / 房型可售间夜数\n房型RevPAR = 房型房费收入 / 房型可售间夜数\n预订完成率 = 成功转入住的预订单数 / 有效预订单数，有效预订单通常排除已取消、无效状态\n订单取消金额 = SUM(OnlinePreorder.TotalPrice 或 PreOrder.Price * RoomCount * StayDays)，仅统计已取消预订单的金额\n损失间夜数 = 已取消或 NoShow 的预订间夜数，通常为 SUM(RoomCount * StayDays)\n损失收入 = 已取消或 NoShow 的预订金额合计，用于评估流失收益\n在住房数 = COUNT(Order.Id)，统计指定时点在住订单数，通常排除已退房、已取消和虚拟单\n空房数 = 可售房间数 - 在住房数\n空置率 = 空房数 / 可售房间数\n维修房数量 = COUNT(Room.Id)，仅统计 Room.Status 或 SellStatus 为维修、停用的房间\n可售房占比 = 可售房间数 / 全部房间数\n全部房间数 = COUNT(Room.Id)，按酒店统计房间总数，不区分可售状态"
       }
     ]
   }

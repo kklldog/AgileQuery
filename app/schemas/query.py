@@ -8,6 +8,12 @@ class QueryRequest(BaseModel):
     max_rows: int | None = Field(default=None, ge=1, le=1000)
 
 
+class LLMTrace(BaseModel):
+    stage: str
+    prompt: str
+    response: str
+
+
 class QueryResponse(BaseModel):
     database_id: str
     space_id: str
@@ -18,3 +24,4 @@ class QueryResponse(BaseModel):
     row_count: int
     is_truncated: bool
     diagnostics: list[str]
+    llm_traces: list[LLMTrace] = Field(default_factory=list)

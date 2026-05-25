@@ -74,6 +74,8 @@ def test_create_space_success():
         "tables": [],
         "join_rules": [],
         "metric_rules": [],
+        "joins_text": "",
+        "metrics_text": "",
     }
     assert repository.get_space("demo", "finance_ops").name == "Finance Ops"
     clear_dependency_overrides()

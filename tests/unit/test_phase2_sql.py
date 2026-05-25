@@ -3,7 +3,6 @@ from app.domain.models import ColumnMeta, DatabaseMeta, JoinRuleMeta, MetricRule
 from app.integrations.llm_client import FixedResponseLLMClient
 from app.services.phase2_sql import SqlGenerationService
 
-
 def build_context() -> RetrievedContext:
     sales_orders = TableMeta(
         name="sales_orders",
@@ -84,130 +83,43 @@ def build_postgres_context() -> RetrievedContext:
     )
 
 
-def test_validate_sql_accepts_simple_qualified_select() -> None:
-    service = SqlGenerationService()
-
-    service.validate_sql(
-        "SELECT so.order_id, so.amount FROM sales_orders AS so LIMIT 10",
-        build_single_table_context(),
-    )
-
-
-def test_validate_sql_rejects_multiple_statements() -> None:
+def test_safety_check_rejects_multiple_statements() -> None:
     service = SqlGenerationService()
 
     try:
-        service.validate_sql("SELECT so.order_id FROM sales_orders AS so; DELETE FROM sales_orders", build_single_table_context())
+        service._safety_check("SELECT order_id FROM sales_orders; DELETE FROM sales_orders")
     except QueryValidationError as exc:
-        assert str(exc) == "Multiple SQL statements are not allowed"
+        assert "Multiple SQL statements" in str(exc)
     else:
         raise AssertionError("Expected multi-statement SQL to fail")
 
 
-def test_validate_sql_rejects_unknown_table() -> None:
+def test_safety_check_rejects_non_select() -> None:
     service = SqlGenerationService()
 
     try:
-        service.validate_sql("SELECT x.order_id FROM unknown_table AS x", build_single_table_context())
+        service._safety_check("DELETE FROM sales_orders")
     except QueryValidationError as exc:
-        assert str(exc) == "Unknown table in SQL: unknown_table"
+        assert "Only SELECT" in str(exc)
     else:
-        raise AssertionError("Expected unknown table to fail")
+        raise AssertionError("Expected DELETE to fail safety check")
 
 
-def test_validate_sql_rejects_unknown_column() -> None:
-    service = SqlGenerationService()
+def test_correct_sql_builds_prompt_with_error() -> None:
+    captured: list[str] = []
 
-    try:
-        service.validate_sql("SELECT so.unknown_metric FROM sales_orders AS so", build_single_table_context())
-    except QueryValidationError as exc:
-        assert str(exc) == "Unknown column in SQL: so.unknown_metric"
-    else:
-        raise AssertionError("Expected unknown column to fail")
+    class CapturingLLMClient:
+        def complete(self, prompt: str) -> str:
+            captured.append(prompt)
+            return "SELECT COUNT(*) FROM sales_orders"
 
+    service = SqlGenerationService(llm_client=CapturingLLMClient())
+    result = service.correct_sql("original prompt", "SELECT bad FROM x", "no such table: x")
 
-def test_validate_sql_rejects_star_projection() -> None:
-    service = SqlGenerationService()
-
-    try:
-        service.validate_sql("SELECT * FROM sales_orders AS so", build_single_table_context())
-    except QueryValidationError as exc:
-        assert str(exc) == "Star projections are not allowed"
-    else:
-        raise AssertionError("Expected star projection to fail")
-
-
-def test_validate_sql_rejects_unqualified_column_in_multi_table_scope() -> None:
-    service = SqlGenerationService()
-
-    try:
-        service.validate_sql(
-            "SELECT order_id FROM sales_orders AS so JOIN sales_customers AS sc ON so.order_id = sc.customer_name",
-            build_context(),
-        )
-    except QueryValidationError as exc:
-        assert str(exc) == "Unqualified column is not allowed in multi-table scope: order_id"
-    else:
-        raise AssertionError("Expected bare column to fail in multi-table scope")
-
-
-def test_validate_sql_accepts_join_condition_from_join_rule() -> None:
-    service = SqlGenerationService()
-
-    service.validate_sql(
-        "SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc ON so.customer_name = sc.customer_name",
-        build_context(),
-    )
-
-
-def test_validate_sql_accepts_structurally_safe_join_not_in_join_rule() -> None:
-    service = SqlGenerationService()
-
-    service.validate_sql(
-        "SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc ON so.order_id = sc.customer_name",
-        build_context(),
-    )
-
-
-def test_validate_sql_accepts_join_without_join_rule_when_structurally_safe() -> None:
-    service = SqlGenerationService()
-    context = build_context()
-    context_without_join_rule = RetrievedContext(
-        database=context.database,
-        space=context.space,
-        tables=context.tables,
-        keywords=context.keywords,
-    )
-
-    service.validate_sql(
-        "SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc ON so.customer_name = sc.customer_name",
-        context_without_join_rule,
-    )
-
-
-def test_validate_sql_rejects_join_without_on_condition() -> None:
-    service = SqlGenerationService()
-
-    try:
-        service.validate_sql("SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc", build_context())
-    except QueryValidationError as exc:
-        assert str(exc) == "JOIN must include an allowed ON condition"
-    else:
-        raise AssertionError("Expected JOIN without ON to fail")
-
-
-def test_validate_sql_rejects_join_condition_that_does_not_connect_tables() -> None:
-    service = SqlGenerationService()
-
-    try:
-        service.validate_sql(
-            "SELECT so.amount, sc.customer_tier FROM sales_orders AS so JOIN sales_customers AS sc ON so.amount > 100",
-            build_context(),
-        )
-    except QueryValidationError as exc:
-        assert str(exc) == "JOIN condition must reference at least two table aliases"
-    else:
-        raise AssertionError("Expected non-connecting JOIN condition to fail")
+    assert "original prompt" in captured[0]
+    assert "no such table: x" in captured[0]
+    corrected_sql, _, _ = result
+    assert corrected_sql == "SELECT COUNT(*) FROM sales_orders"
 
 
 def test_generate_sql_uses_available_columns_for_default_projection() -> None:
@@ -289,12 +201,6 @@ def test_generate_sql_accepts_valid_llm_client_response() -> None:
     assert "sql_generated=llm_client" in validated.diagnostics
 
 
-def test_validate_sql_uses_context_database_dialect() -> None:
-    service = SqlGenerationService()
-
-    service.validate_sql('SELECT so.amount FROM "sales_orders" AS so LIMIT 10', build_postgres_context())
-
-
 def test_generate_sql_uses_dialect_limit_renderer() -> None:
     service = SqlGenerationService()
 
@@ -303,19 +209,6 @@ def test_generate_sql_uses_dialect_limit_renderer() -> None:
     assert validated.sql.endswith("LIMIT 10")
 
 
-def test_validate_sql_rejects_unsupported_database_dialect() -> None:
+def test_safety_check_accepts_valid_select() -> None:
     service = SqlGenerationService()
-    context = build_single_table_context()
-    unsupported_context = RetrievedContext(
-        database=DatabaseMeta(id="oracle_demo", name="Oracle Demo", dialect="oracle", description="Oracle", spaces=[]),
-        space=context.space,
-        tables=context.tables,
-        keywords=context.keywords,
-    )
-
-    try:
-        service.validate_sql("SELECT so.amount FROM sales_orders AS so", unsupported_context)
-    except QueryValidationError as exc:
-        assert str(exc) == "Unsupported SQL dialect: oracle"
-    else:
-        raise AssertionError("Expected unsupported dialect to fail")
+    service._safety_check("SELECT so.amount FROM sales_orders AS so LIMIT 10")

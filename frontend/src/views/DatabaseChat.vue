@@ -73,6 +73,8 @@ async function onDialogSubmit(payload: {
   tables: SpaceMeta['tables']
   join_rules: SpaceMeta['join_rules']
   metric_rules: SpaceMeta['metric_rules']
+  joins_text: string
+  metrics_text: string
 }) {
   dialogSubmitting.value = true
   dialogError.value = ''
@@ -87,6 +89,8 @@ async function onDialogSubmit(payload: {
         tables: payload.tables,
         join_rules: payload.join_rules,
         metric_rules: payload.metric_rules,
+        joins_text: payload.joins_text,
+        metrics_text: payload.metrics_text,
       })
       spaceSuccess.value = `Space "${payload.name}" 已更新。`
     }
@@ -130,6 +134,15 @@ const FALLBACK_PROMPTS = [
   '各产品线的销售额排名如何？',
   '最近30天新增用户数是多少？',
 ]
+
+const stageLabelMap: Record<string, string> = {
+  keyword_expansion: '🔍 LLM · Keyword Expansion',
+  sql_generation: '🧠 LLM · SQL Generation',
+  sql_correction_safety: '🔧 LLM · SQL Correction (Safety)',
+  sql_correction_1: '🔧 LLM · SQL Correction (Attempt 1)',
+  sql_correction_2: '🔧 LLM · SQL Correction (Attempt 2)',
+  insight: '💡 LLM · Insight Generation',
+}
 
 function fillPromptIdea() {
   const allQuestions = spaces.value.flatMap(s => s.sample_questions).filter(Boolean)
@@ -207,7 +220,22 @@ function fillPromptIdea() {
                   <strong>{{ queryResult.row_count }}</strong> rows
                 </p>
                 <pre class="sql-block">{{ queryResult.sql }}</pre>
-                <p v-for="d in queryResult.diagnostics" :key="d" class="text-caption text-medium-emphasis mt-1">· {{ d }}</p>
+                <div v-if="queryResult.diagnostics.length" class="diag-list mt-2">
+                  <p v-for="d in queryResult.diagnostics" :key="d" class="text-caption text-medium-emphasis diag-item">· {{ d }}</p>
+                </div>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+
+            <v-expansion-panel
+              v-for="(trace, i) in queryResult.llm_traces"
+              :key="i"
+              :title="stageLabelMap[trace.stage] ?? trace.stage"
+            >
+              <v-expansion-panel-text>
+                <p class="trace-section-label">Prompt</p>
+                <pre class="trace-block">{{ trace.prompt }}</pre>
+                <p class="trace-section-label mt-3">Response</p>
+                <pre class="trace-block trace-response">{{ trace.response || '(empty)' }}</pre>
               </v-expansion-panel-text>
             </v-expansion-panel>
           </v-expansion-panels>
@@ -401,6 +429,34 @@ function fillPromptIdea() {
   overflow-x: auto;
   white-space: pre-wrap;
   margin: 6px 0 0;
+}
+.diag-list { display: flex; flex-direction: column; gap: 2px; }
+.diag-item { margin: 0; }
+.trace-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin: 0 0 4px;
+}
+.trace-block {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  background: #f8f9fc;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 8px;
+  padding: 10px 14px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow-y: auto;
+  margin: 0;
+}
+.trace-response {
+  background: #f0fdf4;
+  border-color: rgba(16, 185, 129, 0.2);
 }
 
 /* Data Spaces */

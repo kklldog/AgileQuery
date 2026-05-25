@@ -166,6 +166,8 @@ class InMemoryCatalogRepository:
         tables: list[TableMeta] | None = None,
         join_rules: list[JoinRuleMeta] | None = None,
         metric_rules: list[MetricRuleMeta] | None = None,
+        joins_text: str | None = None,
+        metrics_text: str | None = None,
     ) -> SpaceMeta:
         database = self.get_database(database_id)
         if not any(space.id == space_id for space in database.spaces):
@@ -183,6 +185,8 @@ class InMemoryCatalogRepository:
                     tables=tables if tables is not None else list(space.tables),
                     join_rules=join_rules if join_rules is not None else list(space.join_rules),
                     metric_rules=metric_rules if metric_rules is not None else list(space.metric_rules),
+                    joins_text=joins_text if joins_text is not None else space.joins_text,
+                    metrics_text=metrics_text if metrics_text is not None else space.metrics_text,
                 )
                 updated_spaces.append(updated)
             else:
@@ -285,6 +289,8 @@ class JsonFileCatalogRepository(InMemoryCatalogRepository):
         tables: list[TableMeta] | None = None,
         join_rules: list[JoinRuleMeta] | None = None,
         metric_rules: list[MetricRuleMeta] | None = None,
+        joins_text: str | None = None,
+        metrics_text: str | None = None,
     ) -> SpaceMeta:
         updated = super().update_space(
             database_id,
@@ -294,6 +300,8 @@ class JsonFileCatalogRepository(InMemoryCatalogRepository):
             tables=tables,
             join_rules=join_rules,
             metric_rules=metric_rules,
+            joins_text=joins_text,
+            metrics_text=metrics_text,
         )
         self._save_to_file()
         return updated
@@ -316,7 +324,9 @@ class JsonFileCatalogRepository(InMemoryCatalogRepository):
             sample_questions=data.get("sample_questions", []),
             tables=[self._parse_table(t) for t in data.get("tables", [])],
             join_rules=[self._parse_join_rule(j) for j in data.get("join_rules", [])],
-            metric_rules=[self._parse_metric_rule(m) for m in data.get("metric_rules", [])]
+            metric_rules=[self._parse_metric_rule(m) for m in data.get("metric_rules", [])],
+            joins_text=data.get("joins_text", ""),
+            metrics_text=data.get("metrics_text", ""),
         )
 
     def _parse_table(self, data: dict) -> TableMeta:

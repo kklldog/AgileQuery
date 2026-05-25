@@ -5,12 +5,14 @@ from app.domain.errors import QueryValidationError
 from app.domain.models import JoinRuleMeta, MetricRuleMeta, RetrievedContext, SpaceMeta, TableMeta
 from app.integrations.llm_client import LLMClient
 from app.repositories.catalog import InMemoryCatalogRepository
+from app.repositories.prompt_config import PROMPT_KEYWORD_EXPANSION, PromptConfig
 
 
 class RetrievalService:
-    def __init__(self, catalog: InMemoryCatalogRepository, llm_client: LLMClient | None = None) -> None:
+    def __init__(self, catalog: InMemoryCatalogRepository, llm_client: LLMClient | None = None, prompt_config: PromptConfig | None = None) -> None:
         self._catalog = catalog
         self._llm_client = llm_client
+        self._cfg = prompt_config or PromptConfig()
         try:
             self._fts_connection = sqlite3.connect(":memory:")
             self._initialize_fts_schema()
@@ -37,10 +39,11 @@ class RetrievalService:
                     )
         self._fts_connection.commit()
 
-    def retrieve(self, database_id: str, question: str, space_id: str | None = None) -> RetrievedContext:
+    def retrieve(self, database_id: str, question: str, space_id: str | None = None, prompt_config: PromptConfig | None = None) -> RetrievedContext:
+        cfg = prompt_config or self._cfg
         database = self._catalog.get_database(database_id)
         resolved_space, routing_diagnostics = self._resolve_space(database_id, question, space_id)
-        llm_terms = self._llm_expand_keywords(question)
+        llm_terms, llm_keyword_prompt, llm_keyword_response = self._llm_expand_keywords(question, cfg)
         strong_terms, fallback_terms = self._extract_keywords(question)
         strong_terms, fallback_terms = self._filter_resolved_space_terms(strong_terms, fallback_terms, resolved_space)
         llm_terms = self._filter_resolved_space_terms(llm_terms, [], resolved_space)[0]
@@ -68,6 +71,8 @@ class RetrievalService:
             join_rules=join_rules,
             metric_rules=metric_rules,
             diagnostics=diagnostics,
+            llm_keyword_prompt=llm_keyword_prompt,
+            llm_keyword_response=llm_keyword_response,
         )
 
     def _resolve_space(self, database_id: str, question: str, space_id: str | None) -> tuple[SpaceMeta, list[str]]:
@@ -99,25 +104,22 @@ class RetrievalService:
 
         return top_space, [f"routing_strategy=scored", f"routing_scores={score_details}"]
 
-    def _llm_expand_keywords(self, question: str) -> list[str]:
+    def _llm_expand_keywords(self, question: str, cfg: PromptConfig | None = None) -> tuple[list[str], str, str]:
         if self._llm_client is None:
-            return []
-        prompt = (
-            f"从以下问题中提取核心业务关键词，并为每个关键词联想2-3个同义词或相关词，用于数据库文档检索。"
-            f"只返回一个 JSON 数组，包含所有关键词和同义词，不要输出其他内容。\n\n"
-            f"示例：\n问题: \"25年一共多少订单量\"\n"
-            f"输出: [\"订单\", \"订单量\", \"order\", \"订单数\", \"订单总量\", \"单量\"]\n\n"
-            f"问题: \"{question}\"\n输出:"
-        )
+            return [], "", ""
+        active_cfg = cfg or self._cfg
+        template = active_cfg.get(PROMPT_KEYWORD_EXPANSION)
+        prompt = template.replace("{question}", question)
         try:
             raw = self._llm_client.complete(prompt).strip()
             start = raw.find("[")
             end = raw.rfind("]") + 1
             if start == -1 or end == 0:
-                return []
-            return [str(t).strip() for t in json.loads(raw[start:end]) if isinstance(t, str) and str(t).strip()]
+                return [], prompt, raw
+            terms = [str(t).strip() for t in json.loads(raw[start:end]) if isinstance(t, str) and str(t).strip()]
+            return terms, prompt, raw
         except Exception:
-            return []
+            return [], prompt, ""
 
     def _extract_keywords(self, question: str) -> tuple[list[str], list[str]]:
         normalized = question.replace("?", " ").replace("？", " ").strip()
